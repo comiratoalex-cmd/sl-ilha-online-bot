@@ -1,8 +1,10 @@
 import { Client, GatewayIntentBits } from "discord.js";
 import fetch from "node-fetch";
 
-/* ENV CHECK */
-const REQUIRED = [
+/* =========================
+   VARIÁVEIS DE AMBIENTE
+========================= */
+const REQUIRED_ENV = [
   "BOT_TOKEN",
   "API_URL",
   "GUILD_ID",
@@ -10,9 +12,9 @@ const REQUIRED = [
   "CHANNEL_PEAK"
 ];
 
-for (const k of REQUIRED) {
-  if (!process.env[k]) {
-    console.error("Missing ENV:", k);
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error("Missing environment variable:", key);
     process.exit(1);
   }
 }
@@ -23,7 +25,9 @@ const GUILD_ID = process.env.GUILD_ID;
 const CHANNEL_ONLINE = process.env.CHANNEL_ONLINE;
 const CHANNEL_PEAK = process.env.CHANNEL_PEAK;
 
-/* DISCORD CLIENT */
+/* =========================
+   CLIENTE DISCORD
+========================= */
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
@@ -31,48 +35,61 @@ const client = new Client({
 let lastOnline = null;
 let lastPeak = null;
 
+/* =========================
+   BOT READY
+========================= */
 client.once("ready", async () => {
-  console.log("Bot connected:", client.user.tag);
+  console.log("Bot conectado como:", client.user.tag);
 
   try {
     const guild = await client.guilds.fetch(GUILD_ID);
-    const channel = await guild.channels.fetch(CHANNEL_ONLINE);
-    await channel.setName("ONLINE: starting");
-    console.log("Rename permission OK");
+    console.log("Servidor OK:", guild.name);
   } catch (err) {
-    console.error("Rename test failed:", err.message);
+    console.error("Erro ao acessar o servidor:", err.message);
     return;
   }
 
+  /* =========================
+     LOOP PRINCIPAL
+  ========================= */
   setInterval(async () => {
     try {
-      const res = await fetch(API_URL);
-      const data = await res.json();
+      const response = await fetch(API_URL);
+      const data = await response.json();
 
       const online = Number(data.online);
       const peak = Number(data.peak);
 
-      if (isNaN(online) || isNaN(peak)) return;
+      if (isNaN(online) || isNaN(peak)) {
+        console.error("Dados inválidos da API:", data);
+        return;
+      }
 
       const guild = await client.guilds.fetch(GUILD_ID);
 
+      // Atualiza ONLINE
       if (online !== lastOnline) {
-        const ch = await guild.channels.fetch(CHANNEL_ONLINE);
-        await ch.setName("ONLINE: " + online);
+        const onlineChannel = await guild.channels.fetch(CHANNEL_ONLINE);
+        await onlineChannel.setName("ONLINE: " + online);
         lastOnline = online;
+        console.log("Online atualizado:", online);
       }
 
+      // Atualiza PEAK
       if (peak !== lastPeak) {
-        const ch = await guild.channels.fetch(CHANNEL_PEAK);
-        await ch.setName("PEAK: " + peak);
+        const peakChannel = await guild.channels.fetch(CHANNEL_PEAK);
+        await peakChannel.setName("PEAK: " + peak);
         lastPeak = peak;
+        console.log("Peak atualizado:", peak);
       }
 
     } catch (err) {
-      console.error("Loop error:", err.message);
+      console.error("Erro no loop:", err.message);
     }
-  }, 30000);
-
+  }, 30000); // 30 segundos
 });
 
+/* =========================
+   LOGIN
+========================= */
 client.login(BOT_TOKEN);
