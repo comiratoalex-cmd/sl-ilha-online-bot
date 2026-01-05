@@ -1,0 +1,14 @@
+﻿{
+  "name": "sl-ilha-online-bot",
+  "version": "1.0.0",
+  "description": "Bot Discord - Contador de pessoas online na ilha do Second Life",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "node-fetch": "^3.3.2"
+  }
+}
