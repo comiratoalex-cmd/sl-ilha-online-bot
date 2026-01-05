@@ -7,8 +7,8 @@ const client = new Client({
 client.once("ready", async () => {
   console.log("BOT ONLINE");
 
-  const guild = await client.guilds.fetch("SEU_GUILD_ID");
-  const channel = await guild.channels.fetch("ID_DO_CANAL_TESTE");
+  const guild = await client.guilds.fetch("773483792744316988");
+  const channel = await guild.channels.fetch("1457676179044827169");
 
   console.log("Canal:", channel.name, channel.type);
 
