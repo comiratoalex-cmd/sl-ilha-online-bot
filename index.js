@@ -1,109 +1,62 @@
-/**
- * Backend ONLINE + PICOS
- * Diario, Semanal, Mensal, Anual
- */
+import { Client, GatewayIntentBits, ChannelType } from "discord.js";
+import fetch from "node-fetch";
 
-function getKeyDates() {
-  const now = new Date();
+const {
+  BOT_TOKEN,
+  API_URL,
+  GUILD_ID,
+  CHANNEL_ONLINE,
+  CHANNEL_PEAK_DAY,
+  CHANNEL_PEAK_WEEK,
+  CHANNEL_PEAK_MONTH,
+  CHANNEL_PEAK_YEAR
+} = process.env;
 
-  const year = now.getFullYear();
-  const month = year + "-" + (now.getMonth() + 1);
-  const day = month + "-" + now.getDate();
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds]
+});
 
-  // Semana ISO simples (ano-semana)
-  const firstJan = new Date(year, 0, 1);
-  const week = Math.ceil(
-    (((now - firstJan) / 86400000) + firstJan.getDay() + 1) / 7
-  );
-  const weekKey = year + "-W" + week;
+let cache = {};
+let lastUpdate = 0;
+const MIN_INTERVAL = 60_000;
 
-  return { year, month, day, weekKey };
+async function updateChannel(guild, channelId, name) {
+  if (!channelId) return;
+  if (cache[channelId] === name) return;
+
+  const channel = await guild.channels.fetch(channelId);
+  if (!channel || channel.type !== ChannelType.GuildVoice) return;
+
+  await channel.setName(name);
+  cache[channelId] = name;
+
+  console.log("Renomeado:", name);
 }
 
-function doPost(e) {
-  try {
-    const props = PropertiesService.getScriptProperties();
-    const data = JSON.parse(e.postData.contents);
+client.once("ready", () => {
+  console.log("Bot online");
 
-    let online = Number(data.online);
-    if (isNaN(online)) online = 0;
+  setInterval(async () => {
+    try {
+      if (Date.now() - lastUpdate < MIN_INTERVAL) return;
 
-    const dates = getKeyDates();
+      const res = await fetch(API_URL, { cache: "no-store" });
+      const data = await res.json();
 
-    // ONLINE atual
-    props.setProperty("online", online);
+      const guild = await client.guilds.fetch(GUILD_ID);
 
-    // -------- DIARIO --------
-    if (props.getProperty("day_key") !== dates.day) {
-      props.setProperty("day_key", dates.day);
-      props.setProperty("peak_day", 0);
+      await updateChannel(guild, CHANNEL_ONLINE, `🌴 Ilha Online: ${data.online}`);
+      await updateChannel(guild, CHANNEL_PEAK_DAY, `🔥 Pico Hoje: ${data.peak_day}`);
+      await updateChannel(guild, CHANNEL_PEAK_WEEK, `📅 Pico Semana: ${data.peak_week}`);
+      await updateChannel(guild, CHANNEL_PEAK_MONTH, `🗓 Pico Mês: ${data.peak_month}`);
+      await updateChannel(guild, CHANNEL_PEAK_YEAR, `🏆 Pico Ano: ${data.peak_year}`);
+
+      lastUpdate = Date.now();
+
+    } catch (err) {
+      console.error("Erro:", err.message);
     }
+  }, 30_000);
+});
 
-    let peakDay = Number(props.getProperty("peak_day") || 0);
-    if (online > peakDay) {
-      props.setProperty("peak_day", online);
-    }
-
-    // -------- SEMANAL --------
-    if (props.getProperty("week_key") !== dates.weekKey) {
-      props.setProperty("week_key", dates.weekKey);
-      props.setProperty("peak_week", 0);
-    }
-
-    let peakWeek = Number(props.getProperty("peak_week") || 0);
-    if (online > peakWeek) {
-      props.setProperty("peak_week", online);
-    }
-
-    // -------- MENSAL --------
-    if (props.getProperty("month_key") !== dates.month) {
-      props.setProperty("month_key", dates.month);
-      props.setProperty("peak_month", 0);
-    }
-
-    let peakMonth = Number(props.getProperty("peak_month") || 0);
-    if (online > peakMonth) {
-      props.setProperty("peak_month", online);
-    }
-
-    // -------- ANUAL --------
-    if (props.getProperty("year_key") !== String(dates.year)) {
-      props.setProperty("year_key", dates.year);
-      props.setProperty("peak_year", 0);
-    }
-
-    let peakYear = Number(props.getProperty("peak_year") || 0);
-    if (online > peakYear) {
-      props.setProperty("peak_year", online);
-    }
-
-    props.setProperty("updated", new Date().toISOString());
-
-    return ContentService.createTextOutput(JSON.stringify({
-      online,
-      peak_day: Number(props.getProperty("peak_day")),
-      peak_week: Number(props.getProperty("peak_week")),
-      peak_month: Number(props.getProperty("peak_month")),
-      peak_year: Number(props.getProperty("peak_year")),
-      updated: props.getProperty("updated")
-    })).setMimeType(ContentService.MimeType.JSON);
-
-  } catch (err) {
-    return ContentService.createTextOutput(
-      JSON.stringify({ error: err.message })
-    ).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-function doGet() {
-  const props = PropertiesService.getScriptProperties();
-
-  return ContentService.createTextOutput(JSON.stringify({
-    online: Number(props.getProperty("online") || 0),
-    peak_day: Number(props.getProperty("peak_day") || 0),
-    peak_week: Number(props.getProperty("peak_week") || 0),
-    peak_month: Number(props.getProperty("peak_month") || 0),
-    peak_year: Number(props.getProperty("peak_year") || 0),
-    updated: props.getProperty("updated") || null
-  })).setMimeType(ContentService.MimeType.JSON);
-}
+client.login(BOT_TOKEN);
