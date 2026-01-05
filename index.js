@@ -18,7 +18,7 @@ const client = new Client({
 
 let cache = {};
 let lastUpdate = 0;
-const MIN_INTERVAL = 60000;
+const MIN_INTERVAL = 3000;
 
 async function updateChannel(guild, id, name) {
   if (!id || cache[id] === name) return;
@@ -51,7 +51,7 @@ client.once("ready", () => {
     } catch (e) {
       console.error(e.message);
     }
-  }, 30000);
+  }, 3000);
 });
 
 client.login(BOT_TOKEN);
