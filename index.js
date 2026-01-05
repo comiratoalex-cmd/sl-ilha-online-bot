@@ -1,10 +1,8 @@
 import { Client, GatewayIntentBits } from "discord.js";
 import fetch from "node-fetch";
 
-/* =========================
-   VARIÁVEIS OBRIGATÓRIAS
-========================= */
-const REQUIRED_ENV = [
+/* ENV CHECK */
+const REQUIRED = [
   "BOT_TOKEN",
   "API_URL",
   "GUILD_ID",
@@ -12,24 +10,20 @@ const REQUIRED_ENV = [
   "CHANNEL_PEAK"
 ];
 
-for (const key of REQUIRED_ENV) {
-  if (!process.env[key]) {
-    console.error(`❌ Variável de ambiente ausente: ${key}`);
+for (const k of REQUIRED) {
+  if (!process.env[k]) {
+    console.error("Missing ENV:", k);
     process.exit(1);
   }
 }
 
-const {
-  BOT_TOKEN,
-  API_URL,
-  GUILD_ID,
-  CHANNEL_ONLINE,
-  CHANNEL_PEAK
-} = process.env;
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const API_URL = process.env.API_URL;
+const GUILD_ID = process.env.GUILD_ID;
+const CHANNEL_ONLINE = process.env.CHANNEL_ONLINE;
+const CHANNEL_PEAK = process.env.CHANNEL_PEAK;
 
-/* =========================
-   CLIENTE DISCORD
-========================= */
+/* DISCORD CLIENT */
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
@@ -37,28 +31,19 @@ const client = new Client({
 let lastOnline = null;
 let lastPeak = null;
 
-/* =========================
-   BOT READY
-========================= */
 client.once("ready", async () => {
-  console.log(`✅ Bot conectado como ${client.user.tag}`);
+  console.log("Bot connected:", client.user.tag);
 
-  // Teste imediato de permissão (executa UMA vez)
   try {
     const guild = await client.guilds.fetch(GUILD_ID);
-    const ch = await guild.channels.fetch(CHANNEL_ONLINE);
-
-    await ch.setName("🟢 Ilha Online: verificando...");
-    console.log("✅ Permissão de renomear canal CONFIRMADA");
+    const channel = await guild.channels.fetch(CHANNEL_ONLINE);
+    await channel.setName("ONLINE: starting");
+    console.log("Rename permission OK");
   } catch (err) {
-    console.error("❌ ERRO AO RENOMEAR CANAL:", err.message);
-    console.error("➡️ Verifique Manage Channels no canal de VOZ");
+    console.error("Rename test failed:", err.message);
     return;
   }
 
-  /* =========================
-     LOOP PRINCIPAL
-  ========================= */
   setInterval(async () => {
     try {
       const res = await fetch(API_URL);
@@ -67,33 +52,27 @@ client.once("ready", async () => {
       const online = Number(data.online);
       const peak = Number(data.peak);
 
-      if (isNaN(online) || isNaN(peak)) {
-        console.error("❌ Dados inválidos da API:", data);
-        return;
-      }
+      if (isNaN(online) || isNaN(peak)) return;
 
       const guild = await client.guilds.fetch(GUILD_ID);
 
-      // Atualiza ONLINE
       if (online !== lastOnline) {
-        const chOnline = await guild.channels.fetch(CHANNEL_ONLINE);
-        await chOnline.setName(`🌴 Ilha Online: ${online}`);
+        const ch = await guild.channels.fetch(CHANNEL_ONLINE);
+        await ch.setName("ONLINE: " + online);
         lastOnline = online;
-        console.log(`🔄 Online atualizado: ${online}`);
       }
 
-      // Atualiza PEAK
       if (peak !== lastPeak) {
-        const chPeak = await guild.channels.fetch(CHANNEL_PEAK);
-        await chPeak.setName(`🔥 Pico Hoje: ${peak}`);
+        const ch = await guild.channels.fetch(CHANNEL_PEAK);
+        await ch.setName("PEAK: " + peak);
         lastPeak = peak;
-        console.log(`🔄 Peak atualizado: ${peak}`);
       }
 
     } catch (err) {
-      console.error("❌ Erro no loop:", err.message);
+      console.error("Loop error:", err.message);
     }
-  }, 30000); // ⏱️ 30 segundos
+  }, 30000);
+
 });
 
-/* ========*
+client.login(BOT_TOKEN);
