@@ -1,65 +1,57 @@
-import { Client, GatewayIntentBits } from "discord.js";
+import { Client, GatewayIntentBits, ChannelType } from "discord.js";
 import fetch from "node-fetch";
-
-/* ===== VERIFICA VARIÁVEIS ===== */
-const requiredVars = [
-  "BOT_TOKEN",
-  "API_URL",
-  "GUILD_ID",
-  "CHANNEL_ONLINE",
-  "CHANNEL_PEAK"
-];
-
-for (const v of requiredVars) {
-  if (!process.env[v]) {
-    console.error(`ENV MISSING: ${v}`);
-    process.exit(1);
-  }
-}
 
 const {
   BOT_TOKEN,
   API_URL,
   GUILD_ID,
   CHANNEL_ONLINE,
-  CHANNEL_PEAK
+  CHANNEL_PEAK_DAY,
+  CHANNEL_PEAK_WEEK,
+  CHANNEL_PEAK_MONTH,
+  CHANNEL_PEAK_YEAR
 } = process.env;
 
-/* ===== CLIENTE DISCORD ===== */
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-let lastOnline = null;
-let lastPeak = null;
+let cache = {};
+let lastUpdate = 0;
+const MIN_INTERVAL = 60000;
+
+async function updateChannel(guild, id, name) {
+  if (!id || cache[id] === name) return;
+
+  const ch = await guild.channels.fetch(id);
+  if (!ch || ch.type !== ChannelType.GuildVoice) return;
+
+  await ch.setName(name);
+  cache[id] = name;
+}
 
 client.once("ready", () => {
-  console.log(`Bot conectado como ${client.user.tag}`);
+  console.log("Bot online");
 
   setInterval(async () => {
     try {
-      const res = await fetch(API_URL);
-      const data = await res.json();
+      if (Date.now() - lastUpdate < MIN_INTERVAL) return;
 
-      const guild = await client.guilds.fetch(GUILD_ID);
+      const res = await fetch(API_URL, { cache: "no-store" });
+      const d = await res.json();
+      const g = await client.guilds.fetch(GUILD_ID);
 
-      if (data.online !== lastOnline) {
-        const chOnline = await guild.channels.fetch(CHANNEL_ONLINE);
-        await chOnline.setName(`🌴 Ilha Online: ${data.online}`);
-        lastOnline = data.online;
-      }
+      await updateChannel(g, CHANNEL_ONLINE, `🌴 Ilha Online: ${d.online}`);
+      await updateChannel(g, CHANNEL_PEAK_DAY, `🔥 Pico Hoje: ${d.peak_day}`);
+      await updateChannel(g, CHANNEL_PEAK_WEEK, `📅 Pico Semana: ${d.peak_week}`);
+      await updateChannel(g, CHANNEL_PEAK_MONTH, `🗓 Pico Mes: ${d.peak_month}`);
+      await updateChannel(g, CHANNEL_PEAK_YEAR, `🏆 Pico Ano: ${d.peak_year}`);
 
-      if (data.peak !== lastPeak) {
-        const chPeak = await guild.channels.fetch(CHANNEL_PEAK);
-        await chPeak.setName(`🔥 Pico Hoje: ${data.peak}`);
-        lastPeak = data.peak;
-      }
-
-    } catch (err) {
-      console.error("Runtime error:", err.message);
+      lastUpdate = Date.now();
+    } catch (e) {
+      console.error(e.message);
     }
-  }, 300000); // 5 minutos
+  }, 30000);
 });
 
-/* ===== LOGIN ===== */
 client.login(BOT_TOKEN);
