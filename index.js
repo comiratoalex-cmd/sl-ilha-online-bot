@@ -12,46 +12,67 @@ const {
   CHANNEL_PEAK_YEAR
 } = process.env;
 
+// ================================
+// CLIENTE
+// ================================
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-let cache = {};
-let lastUpdate = 0;
-const MIN_INTERVAL = 3000;
+// ================================
+// CONTROLE
+// ================================
+let cache = {};                // ultimo nome aplicado por canal
+let lastUpdate = 0;            // timestamp da ultima atualizacao
+const MIN_INTERVAL = 20000;    // 20 segundos
 
-async function updateChannel(guild, id, name) {
-  if (!id || cache[id] === name) return;
+// ================================
+// FUNCAO DE UPDATE
+// ================================
+async function updateChannel(guild, channelId, newName) {
+  if (!channelId) return;
+  if (cache[channelId] === newName) return;
 
-  const ch = await guild.channels.fetch(id);
-  if (!ch || ch.type !== ChannelType.GuildVoice) return;
+  const channel = await guild.channels.fetch(channelId);
+  if (!channel || channel.type !== ChannelType.GuildVoice) return;
 
-  await ch.setName(name);
-  cache[id] = name;
+  await channel.setName(newName);
+  cache[channelId] = newName;
+
+  console.log("Renomeado:", newName);
 }
 
+// ================================
+// EVENTO READY
+// ================================
 client.once("ready", () => {
-  console.log("Bot online");
+  console.log("Bot online:", client.user.tag);
 
   setInterval(async () => {
     try {
-      if (Date.now() - lastUpdate < MIN_INTERVAL) return;
+      const now = Date.now();
+      if (now - lastUpdate < MIN_INTERVAL) return;
 
       const res = await fetch(API_URL, { cache: "no-store" });
-      const d = await res.json();
-      const g = await client.guilds.fetch(GUILD_ID);
+      const data = await res.json();
 
-      await updateChannel(g, CHANNEL_ONLINE, `🌴 Ilha Online: ${d.online}`);
-      await updateChannel(g, CHANNEL_PEAK_DAY, `🔥 Pico Hoje: ${d.peak_day}`);
-      await updateChannel(g, CHANNEL_PEAK_WEEK, `📅 Pico Semana: ${d.peak_week}`);
-      await updateChannel(g, CHANNEL_PEAK_MONTH, `🗓 Pico Mes: ${d.peak_month}`);
-      await updateChannel(g, CHANNEL_PEAK_YEAR, `🏆 Pico Ano: ${d.peak_year}`);
+      const guild = await client.guilds.fetch(GUILD_ID);
 
-      lastUpdate = Date.now();
-    } catch (e) {
-      console.error(e.message);
+      await updateChannel(guild, CHANNEL_ONLINE,     `🌴 Ilha Online: ${data.online}`);
+      await updateChannel(guild, CHANNEL_PEAK_DAY,   `🔥 Pico Hoje: ${data.peak_day}`);
+      await updateChannel(guild, CHANNEL_PEAK_WEEK,  `📅 Pico Semana: ${data.peak_week}`);
+      await updateChannel(guild, CHANNEL_PEAK_MONTH, `🗓 Pico Mês: ${data.peak_month}`);
+      await updateChannel(guild, CHANNEL_PEAK_YEAR,  `🏆 Pico Ano: ${data.peak_year}`);
+
+      lastUpdate = now;
+
+    } catch (err) {
+      console.error("Erro no bot:", err.message);
     }
-  }, 3000);
+  }, 30000); // checa API a cada 30s
 });
 
+// ================================
+// LOGIN
+// ================================
 client.login(BOT_TOKEN);
