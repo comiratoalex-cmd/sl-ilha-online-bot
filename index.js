@@ -32,8 +32,11 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-let lastOnline = null;
-let lastPeak = null;
+/* =========================
+   ESTADO INTERNO
+========================= */
+let lastOnline = -1;
+let lastPeak = -1;
 
 /* =========================
    BOT READY
@@ -41,20 +44,13 @@ let lastPeak = null;
 client.once("ready", async () => {
   console.log("Bot conectado como:", client.user.tag);
 
-  try {
-    const guild = await client.guilds.fetch(GUILD_ID);
-    console.log("Servidor OK:", guild.name);
-  } catch (err) {
-    console.error("Erro ao acessar o servidor:", err.message);
-    return;
-  }
+  // 🔴 RESET FORÇADO (IMPORTANTE)
+  lastOnline = -1;
+  lastPeak = -1;
 
-  /* =========================
-     LOOP PRINCIPAL
-  ========================= */
   setInterval(async () => {
     try {
-      const response = await fetch(API_URL);
+      const response = await fetch(API_URL, { cache: "no-store" });
       const data = await response.json();
 
       const online = Number(data.online);
@@ -67,26 +63,26 @@ client.once("ready", async () => {
 
       const guild = await client.guilds.fetch(GUILD_ID);
 
-      // Atualiza ONLINE
+      // 🔹 ATUALIZA CANAL ONLINE
       if (online !== lastOnline) {
         const onlineChannel = await guild.channels.fetch(CHANNEL_ONLINE);
-        await onlineChannel.setName("ONLINE: " + online);
+        await onlineChannel.setName(`🌴 Ilha Online: ${online}`);
         lastOnline = online;
-        console.log("Online atualizado:", online);
+        console.log("Canal ONLINE atualizado:", online);
       }
 
-      // Atualiza PEAK
+      // 🔹 ATUALIZA CANAL PEAK
       if (peak !== lastPeak) {
         const peakChannel = await guild.channels.fetch(CHANNEL_PEAK);
-        await peakChannel.setName("PEAK: " + peak);
+        await peakChannel.setName(`🔥 Pico Hoje: ${peak}`);
         lastPeak = peak;
-        console.log("Peak atualizado:", peak);
+        console.log("Canal PEAK atualizado:", peak);
       }
 
     } catch (err) {
       console.error("Erro no loop:", err.message);
     }
-  }, 30000); // 30 segundos
+  }, 30000); // ⏱️ 30 segundos
 });
 
 /* =========================
