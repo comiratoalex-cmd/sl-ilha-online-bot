@@ -1,78 +1,117 @@
-import { Client, GatewayIntentBits, ChannelType } from "discord.js";
+import express from "express";
 import fetch from "node-fetch";
 
-const {
-  BOT_TOKEN,
-  API_URL,
-  GUILD_ID,
-  CHANNEL_ONLINE,
-  CHANNEL_PEAK_DAY,
-  CHANNEL_PEAK_WEEK,
-  CHANNEL_PEAK_MONTH,
-  CHANNEL_PEAK_YEAR
-} = process.env;
+const app = express();
+app.use(express.json());
 
-// ================================
-// CLIENTE
-// ================================
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+// ==================================================
+// CONFIG (Railway ENV)
+// ==================================================
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const SL_URL = process.env.SL_URL; // URL gerada pelo llRequestURL()
+
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
+
+// ==================================================
+// ESTADO GLOBAL (ONLINE + PICOS)
+// ==================================================
+let currentOnline = 0;
+
+let peakDay = 0;
+let peakWeek = 0;
+let peakMonth = 0;
+let peakYear = 0;
+
+// ==================================================
+// TELEGRAM -> SL (WEBHOOK)
+// ==================================================
+app.post("/telegram", async (req, res) => {
+  const msg = req.body.message;
+  if (!msg) return res.send("ok");
+
+  const chatId = msg.chat.id;
+  const text = msg.text.toLowerCase();
+
+  console.log("Telegram:", text);
+
+  // Encaminha comando para o SL
+  try {
+    await fetch(SL_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text
+      })
+    });
+  } catch (err) {
+    console.error("Erro enviando para SL:", err.message);
+  }
+
+  res.send("ok");
 });
 
-// ================================
-// CONTROLE
-// ================================
-let cache = {};                // ultimo nome aplicado por canal
-let lastUpdate = 0;            // timestamp da ultima atualizacao
-const MIN_INTERVAL = 20000;    // 20 segundos
+// ==================================================
+// SL -> BACKEND (EVENTOS / RESPOSTAS)
+// ==================================================
+app.post("/sl", async (req, res) => {
+  const { online, chat_id, sl_message } = req.body;
 
-// ================================
-// FUNCAO DE UPDATE
-// ================================
-async function updateChannel(guild, channelId, newName) {
-  if (!channelId) return;
-  if (cache[channelId] === newName) return;
+  // Atualizacao de ONLINE
+  if (typeof online === "number") {
+    currentOnline = online;
 
-  const channel = await guild.channels.fetch(channelId);
-  if (!channel || channel.type !== ChannelType.GuildVoice) return;
+    peakDay   = Math.max(peakDay, online);
+    peakWeek  = Math.max(peakWeek, online);
+    peakMonth = Math.max(peakMonth, online);
+    peakYear  = Math.max(peakYear, online);
 
-  await channel.setName(newName);
-  cache[channelId] = newName;
+    console.log("SL ONLINE:", online);
+  }
 
-  console.log("Renomeado:", newName);
-}
-
-// ================================
-// EVENTO READY
-// ================================
-client.once("ready", () => {
-  console.log("Bot online:", client.user.tag);
-
-  setInterval(async () => {
+  // Mensagem do SL -> Telegram
+  if (chat_id && sl_message) {
     try {
-      const now = Date.now();
-      if (now - lastUpdate < MIN_INTERVAL) return;
-
-      const res = await fetch(API_URL, { cache: "no-store" });
-      const data = await res.json();
-
-      const guild = await client.guilds.fetch(GUILD_ID);
-
-      await updateChannel(guild, CHANNEL_ONLINE,     `🌴 Ilha Online: ${data.online}`);
-      await updateChannel(guild, CHANNEL_PEAK_DAY,   `🔥 Pico Hoje: ${data.peak_day}`);
-      await updateChannel(guild, CHANNEL_PEAK_WEEK,  `📅 Pico Semana: ${data.peak_week}`);
-      await updateChannel(guild, CHANNEL_PEAK_MONTH, `🗓 Pico Mês: ${data.peak_month}`);
-      await updateChannel(guild, CHANNEL_PEAK_YEAR,  `🏆 Pico Ano: ${data.peak_year}`);
-
-      lastUpdate = now;
-
+      await fetch(`${TELEGRAM_API}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id,
+          text: sl_message
+        })
+      });
     } catch (err) {
-      console.error("Erro no bot:", err.message);
+      console.error("Erro enviando para Telegram:", err.message);
     }
-  }, 30000); // checa API a cada 30s
+  }
+
+  res.json({ ok: true });
 });
 
-// ================================
-// LOGIN
-// ================================
-client.login(BOT_TOKEN);
+// ==================================================
+// API PARA DISCORD BOT
+// ==================================================
+app.get("/api/status", (req, res) => {
+  res.json({
+    online: currentOnline,
+    peak_day: peakDay,
+    peak_week: peakWeek,
+    peak_month: peakMonth,
+    peak_year: peakYear
+  });
+});
+
+// ==================================================
+// HEALTH CHECK
+// ==================================================
+app.get("/", (req, res) => {
+  res.send("SL Ilha Online Bot - Railway backend running");
+});
+
+// ==================================================
+// START
+// ==================================================
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("Backend running on port", PORT);
+});
