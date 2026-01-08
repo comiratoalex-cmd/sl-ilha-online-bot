@@ -4,20 +4,18 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// ===================================================
+// =======================================
 // CONFIGURAÇÃO
-// ===================================================
-
-// TOKEN DO BOT (Railway Variables)
+// =======================================
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-
-// CHAT ID FIXO DO SUPERGRUPO (CORRETO)
 const TELEGRAM_CHAT_ID = -1003540960692;
 
-// ===================================================
-// FUNÇÃO AUXILIAR - ENVIAR TEXTO
-// ===================================================
-async function sendTextToTelegram(text) {
+// =======================================
+// FUNÇÕES AUXILIARES
+// =======================================
+
+// Enviar TEXTO simples
+async function sendText(text) {
   const res = await fetch(
     `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
     {
@@ -30,87 +28,93 @@ async function sendTextToTelegram(text) {
     }
   );
 
-  const body = await res.text();
-  console.log("📤 Telegram sendMessage:", body);
+  console.log("📤 sendMessage:", await res.text());
 }
 
-// ===================================================
-// FUNÇÃO AUXILIAR - ENVIAR FOTO + LEGENDA
-// ===================================================
-async function sendPhotoToTelegram(photoUrl, caption) {
-  const res = await fetch(
-    `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendPhoto`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        photo: photoUrl,
-        caption
-      })
+// Enviar FOTO + LEGENDA (com fallback)
+async function sendPhoto(uuid, caption) {
+  let photoUrl = `https://my-secondlife.s3.amazonaws.com/users/${uuid}/profile.jpg`;
+
+  try {
+    // testa se a imagem existe
+    const head = await fetch(photoUrl, { method: "HEAD" });
+    if (!head.ok) {
+      photoUrl = "https://secondlife.com/static/img/avatar.png";
     }
-  );
 
-  const body = await res.text();
-  console.log("📸 Telegram sendPhoto:", body);
+    const res = await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendPhoto`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: TELEGRAM_CHAT_ID,
+          photo: photoUrl,
+          caption
+        })
+      }
+    );
+
+    console.log("📸 sendPhoto:", await res.text());
+  } catch (err) {
+    console.error("❌ Erro sendPhoto:", err.message);
+  }
 }
 
-// ===================================================
-// ENDPOINT PRINCIPAL — SL → TELEGRAM
-// ===================================================
+// =======================================
+// ENDPOINT SL → TELEGRAM
+// =======================================
 app.post("/sl", async (req, res) => {
   console.log("📥 RECEBIDO DO SL:", req.body);
 
   const {
-    sl_message, // texto simples (ping, mensagens)
+    sl_message, // ping / mensagem manual
     event,      // ENTROU / SAIU
-    name,       // nome do avatar
-    uuid,       // UUID do avatar
-    region      // nome da região
+    name,
+    uuid,
+    region
   } = req.body;
 
   try {
-    // -------------------------------
-    // CASO 1 — EVENTO COM FOTO
-    // -------------------------------
+    // ----------------------------
+    // 1) EVENTO COM FOTO
+    // ----------------------------
     if (event && uuid) {
-      const photoUrl = `https://secondlife.com/app/image/${uuid}/1`;
-
       const caption =
         (event === "ENTROU" ? "🟢 ENTROU no parcel\n" : "🔴 SAIU do parcel\n") +
         `👤 ${name}\n📍 ${region}`;
 
-      await sendPhotoToTelegram(photoUrl, caption);
+      await sendPhoto(uuid, caption);
     }
 
-    // -------------------------------
-    // CASO 2 — MENSAGEM SIMPLES
-    // -------------------------------
+    // ----------------------------
+    // 2) MENSAGEM SIMPLES (PING)
+    // ----------------------------
     else if (sl_message) {
-      await sendTextToTelegram(sl_message);
+      await sendText(sl_message);
     }
 
     else {
-      console.log("⚠️ Payload ignorado (sem dados úteis)");
+      console.log("⚠️ Payload sem ação");
     }
 
   } catch (err) {
-    console.error("❌ ERRO AO ENVIAR PARA TELEGRAM:", err.message);
+    console.error("❌ ERRO GERAL:", err.message);
   }
 
   res.json({ ok: true });
 });
 
-// ===================================================
+// =======================================
 // HEALTH CHECK
-// ===================================================
+// =======================================
 app.get("/", (req, res) => {
   res.send("ILHA SALINAS backend ONLINE 🚀");
 });
 
-// ===================================================
-// START SERVER
-// ===================================================
+// =======================================
+// START
+// =======================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("🚀 Backend Railway rodando na porta", PORT);
