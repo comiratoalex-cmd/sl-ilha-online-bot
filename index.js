@@ -8,9 +8,9 @@ app.use(express.json());
 
 // ================= CONFIG =================
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const TELEGRAM_CHAT_ID = -1003540960692;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-// ================= TEXTO =================
+// ================= UTIL =================
 async function sendText(text) {
   const r = await fetch(
     `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
@@ -26,32 +26,49 @@ async function sendText(text) {
   console.log("📤 sendMessage:", await r.text());
 }
 
-// ================= AVATAR MINI =================
-async function generateMiniAvatar(username) {
+// ================= AVATAR MINI + OVERLAY =================
+async function generateMiniAvatar(username, eventType) {
   const avatarUrl =
     `https://my-secondlife-agni.akamaized.net/users/${username}/sl_image.png`;
 
   const response = await fetch(avatarUrl);
   const buffer = await response.arrayBuffer();
 
-  // Gera imagem pequena (96x96)
-  const mini = await sharp(Buffer.from(buffer))
+  const label = eventType === "ENTROU" ? "ENTROU" : "SAIU";
+  const color = eventType === "ENTROU" ? "#2ECC71" : "#E74C3C";
+
+  const overlaySVG = `
+    <svg width="96" height="96">
+      <rect x="0" y="68" width="96" height="28"
+            fill="${color}" opacity="0.9"/>
+      <text x="48" y="88"
+            font-size="14"
+            fill="white"
+            text-anchor="middle"
+            font-family="Arial, Helvetica, sans-serif"
+            font-weight="bold">
+        ${label}
+      </text>
+    </svg>
+  `;
+
+  const finalImage = await sharp(Buffer.from(buffer))
     .resize(96, 96, { fit: "cover" })
+    .composite([{ input: Buffer.from(overlaySVG) }])
     .png()
     .toBuffer();
 
-  return mini;
+  return finalImage;
 }
 
-// ================= FOTO (MINI) =================
-async function sendMiniPhoto(username, caption) {
-  const imageBuffer = await generateMiniAvatar(username);
+// ================= TELEGRAM PHOTO =================
+async function sendMiniAvatar(username, event, caption) {
+  const imageBuffer = await generateMiniAvatar(username, event);
 
   const form = new FormData();
   form.append("chat_id", TELEGRAM_CHAT_ID);
   form.append("caption", caption);
   form.append("photo", imageBuffer, "avatar.png");
-  form.append("parse_mode", "Markdown");
 
   const r = await fetch(
     `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendPhoto`,
@@ -61,7 +78,7 @@ async function sendMiniPhoto(username, caption) {
     }
   );
 
-  console.log("📸 sendPhoto (mini):", await r.text());
+  console.log("📸 sendPhoto:", await r.text());
 }
 
 // ================= ENDPOINT SL =================
@@ -75,17 +92,18 @@ app.post("/sl", async (req, res) => {
   } = req.body;
 
   try {
-    // EVENTO COM FOTO PEQUENA
+    // EVENTO COM FOTO MINI
     if (event && username) {
       const caption =
-        (event === "ENTROU" ? "🟢 *ENTROU*\n" : "🔴 *SAIU*\n") +
+        (event === "ENTROU" ? "🟢 ENTROU\n" : "🔴 SAIU\n") +
         `👤 ${username}\n` +
         `📍 Região: ${region}\n` +
         `🏡 Parcel: ${parcel}`;
 
-      await sendMiniPhoto(username, caption);
+      await sendMiniAvatar(username, event, caption);
     }
-    // TEXTO NORMAL
+
+    // TEXTO NORMAL (PING / MENSAGEM MANUAL)
     else if (sl_message) {
       await sendText(sl_message);
     }
@@ -96,11 +114,11 @@ app.post("/sl", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ================= START =================
+// ================= STATUS =================
 app.get("/", (req, res) => {
   res.send("ILHA SALINAS backend ONLINE 🚀");
 });
 
 app.listen(process.env.PORT || 3000, () =>
-  console.log("🚀 Backend Railway ONLINE (avatar mini)")
+  console.log("🚀 Backend Railway ONLINE")
 );
