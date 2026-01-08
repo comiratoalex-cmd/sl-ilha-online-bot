@@ -4,15 +4,15 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// =======================================
+// ===================================================
 // CONFIGURAÇÃO
-// =======================================
+// ===================================================
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = -1003540960692;
 
-// =======================================
+// ===================================================
 // FUNÇÕES AUXILIARES
-// =======================================
+// ===================================================
 
 // Enviar TEXTO simples
 async function sendText(text) {
@@ -50,7 +50,8 @@ async function sendPhoto(uuid, caption) {
         body: JSON.stringify({
           chat_id: TELEGRAM_CHAT_ID,
           photo: photoUrl,
-          caption
+          caption,
+          parse_mode: "Markdown"
         })
       }
     );
@@ -61,9 +62,9 @@ async function sendPhoto(uuid, caption) {
   }
 }
 
-// =======================================
+// ===================================================
 // ENDPOINT SL → TELEGRAM
-// =======================================
+// ===================================================
 app.post("/sl", async (req, res) => {
   console.log("📥 RECEBIDO DO SL:", req.body);
 
@@ -72,30 +73,31 @@ app.post("/sl", async (req, res) => {
     event,      // ENTROU / SAIU
     name,
     uuid,
-    region
+    region,
+    parcel,
+    slurl
   } = req.body;
 
   try {
-    // ----------------------------
+    // ---------------------------------
     // 1) EVENTO COM FOTO
-    // ----------------------------
+    // ---------------------------------
     if (event && uuid) {
       const caption =
-        (event === "ENTROU" ? "🟢 ENTROU no parcel\n" : "🔴 SAIU do parcel\n") +
-        `👤 ${name}\n📍 ${region}`;
+        (event == "ENTROU" ? "🟢 *ENTROU* no parcel\n" : "🔴 *SAIU* do parcel\n") +
+        `👤 *${name}*\n` +
+        `📍 Região: ${region}\n` +
+        `🏡 Parcel: ${parcel}\n` +
+        (slurl ? `🌍 [Teleportar](${slurl})` : "");
 
       await sendPhoto(uuid, caption);
     }
 
-    // ----------------------------
-    // 2) MENSAGEM SIMPLES (PING)
-    // ----------------------------
+    // ---------------------------------
+    // 2) MENSAGEM SIMPLES
+    // ---------------------------------
     else if (sl_message) {
       await sendText(sl_message);
-    }
-
-    else {
-      console.log("⚠️ Payload sem ação");
     }
 
   } catch (err) {
@@ -105,16 +107,16 @@ app.post("/sl", async (req, res) => {
   res.json({ ok: true });
 });
 
-// =======================================
+// ===================================================
 // HEALTH CHECK
-// =======================================
+// ===================================================
 app.get("/", (req, res) => {
   res.send("ILHA SALINAS backend ONLINE 🚀");
 });
 
-// =======================================
+// ===================================================
 // START
-// =======================================
+// ===================================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("🚀 Backend Railway rodando na porta", PORT);
