@@ -11,7 +11,7 @@ const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const SL_URL = process.env.SL_URL; // URL gerada pelo llRequestURL() no SL
 
 // CHAT ID AUTORIZADO (GRUPO)
-const ADMIN_CHAT_ID = --1003540960692;
+const ADMIN_CHAT_ID = -1003540960692;
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 
