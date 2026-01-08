@@ -4,17 +4,11 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// ===================================================
-// CONFIGURAÇÃO
-// ===================================================
+// ================= CONFIG =================
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = -1003540960692;
 
-// ===================================================
-// FUNÇÕES AUXILIARES
-// ===================================================
-
-// Enviar TEXTO simples
+// ================= HELPERS =================
 async function sendText(text) {
   const res = await fetch(
     `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
@@ -27,16 +21,13 @@ async function sendText(text) {
       })
     }
   );
-
   console.log("📤 sendMessage:", await res.text());
 }
 
-// Enviar FOTO + LEGENDA (com fallback)
 async function sendPhoto(uuid, caption) {
   let photoUrl = `https://my-secondlife.s3.amazonaws.com/users/${uuid}/profile.jpg`;
 
   try {
-    // testa se a imagem existe
     const head = await fetch(photoUrl, { method: "HEAD" });
     if (!head.ok) {
       photoUrl = "https://secondlife.com/static/img/avatar.png";
@@ -58,19 +49,17 @@ async function sendPhoto(uuid, caption) {
 
     console.log("📸 sendPhoto:", await res.text());
   } catch (err) {
-    console.error("❌ Erro sendPhoto:", err.message);
+    console.error("❌ sendPhoto erro:", err.message);
   }
 }
 
-// ===================================================
-// ENDPOINT SL → TELEGRAM
-// ===================================================
+// ================= ENDPOINT SL =================
 app.post("/sl", async (req, res) => {
-  console.log("📥 RECEBIDO DO SL:", req.body);
+  console.log("📥 SL:", req.body);
 
   const {
-    sl_message, // ping / mensagem manual
-    event,      // ENTROU / SAIU
+    sl_message,
+    event,
     name,
     uuid,
     region,
@@ -79,45 +68,35 @@ app.post("/sl", async (req, res) => {
   } = req.body;
 
   try {
-    // ---------------------------------
-    // 1) EVENTO COM FOTO
-    // ---------------------------------
+    // EVENTO COM FOTO
     if (event && uuid) {
       const caption =
-        (event == "ENTROU" ? "🟢 *ENTROU* no parcel\n" : "🔴 *SAIU* do parcel\n") +
-        `👤 *${name}*\n` +
+        (event === "ENTROU" ? "🟢 *ENTROU*\n" : "🔴 *SAIU*\n") +
+        `👤 ${name}\n` +
         `📍 Região: ${region}\n` +
         `🏡 Parcel: ${parcel}\n` +
         (slurl ? `🌍 [Teleportar](${slurl})` : "");
 
       await sendPhoto(uuid, caption);
     }
-
-    // ---------------------------------
-    // 2) MENSAGEM SIMPLES
-    // ---------------------------------
+    // TEXTO MANUAL / PING
     else if (sl_message) {
       await sendText(sl_message);
     }
-
   } catch (err) {
-    console.error("❌ ERRO GERAL:", err.message);
+    console.error("❌ ERRO:", err.message);
   }
 
   res.json({ ok: true });
 });
 
-// ===================================================
-// HEALTH CHECK
-// ===================================================
+// ================= HEALTH =================
 app.get("/", (req, res) => {
-  res.send("ILHA SALINAS backend ONLINE 🚀");
+  res.send("ILHA SALINAS backend ONLINE");
 });
 
-// ===================================================
-// START
-// ===================================================
+// ================= START =================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("🚀 Backend Railway rodando na porta", PORT);
+  console.log("🚀 Backend rodando na porta", PORT);
 });
