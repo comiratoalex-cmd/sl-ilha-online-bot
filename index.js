@@ -1,5 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
+import FormData from "form-data";
+import { createCanvas } from "canvas";
 
 const app = express();
 app.use(express.json());
@@ -9,14 +11,18 @@ const TOKEN = process.env.TELEGRAM_TOKEN;
 const CHAT_ENTRADA = process.env.TELEGRAM_CHAT_ENTRADA;
 const CHAT_SAIDA = process.env.TELEGRAM_CHAT_SAIDA;
 
-// Anti-spam (ms)
+if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
+  console.error("❌ Variáveis de ambiente ausentes");
+  process.exit(1);
+}
+
+// Anti-spam
 const DEBOUNCE_TIME = 15000;
 const lastEvent = new Map();
 
 // ================= UTIL =================
 function nowFormatted() {
-  const d = new Date();
-  return d.toLocaleString("pt-BR", {
+  return new Date().toLocaleString("pt-BR", {
     timeZone: "Europe/Dublin",
     hour: "2-digit",
     minute: "2-digit",
@@ -38,10 +44,49 @@ function isSpam(username, event) {
   return false;
 }
 
+// ================= CARD IMAGE =================
+function generateCard({ event, username, region, parcel, time }) {
+  const width = 600;
+  const height = 260;
+
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+
+  // Fundo
+  ctx.fillStyle = "#0f1115";
+  ctx.fillRect(0, 0, width, height);
+
+  // Barra lateral
+  ctx.fillStyle = event === "ENTROU" ? "#2ecc71" : "#e74c3c";
+  ctx.fillRect(0, 0, 8, height);
+
+  // Título
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 28px Sans-serif";
+  ctx.fillText(
+    event === "ENTROU" ? "🟢 ENTROU" : "🔴 SAIU",
+    24,
+    46
+  );
+
+  // Conteúdo
+  ctx.font = "20px Sans-serif";
+  ctx.fillText(`👤 ${username}`, 24, 96);
+  ctx.fillText(`📍 Região: ${region}`, 24, 132);
+  ctx.fillText(`🏡 Parcel: ${parcel}`, 24, 168);
+  ctx.fillText(`🕒 ${time}`, 24, 204);
+
+  return canvas.toBuffer("image/png");
+}
+
 // ================= ROUTE =================
 app.post("/sl", async (req, res) => {
   try {
     const { event, username, region, parcel, slurl } = req.body;
+
+    if (!event || !username || !region || !parcel) {
+      return res.status(400).json({ error: "Payload incompleto" });
+    }
 
     if (isSpam(username, event)) {
       return res.json({ ok: true, skipped: "debounce" });
@@ -50,30 +95,33 @@ app.post("/sl", async (req, res) => {
     const isEntrada = event === "ENTROU";
     const chatId = isEntrada ? CHAT_ENTRADA : CHAT_SAIDA;
 
-    const text =
-      `${isEntrada ? "🟢" : "🔴"} ${event}\n` +
-      `👤 ${username}\n` +
-      `📍 Região: ${region}\n` +
-      `🏡 Parcel: ${parcel}\n` +
-      `🕒 ${nowFormatted()}`;
+    const imageBuffer = generateCard({
+      event,
+      username,
+      region,
+      parcel,
+      time: nowFormatted()
+    });
 
-    const payload = {
-      chat_id: chatId,
-      text: text,
-      disable_web_page_preview: true, // 🔥 MATA A IMAGEM GRANDE
-      reply_markup: slurl
-        ? {
-            inline_keyboard: [
-              [{ text: "📍 Abrir no mapa", url: slurl }]
-            ]
-          }
-        : undefined
-    };
+    const form = new FormData();
+    form.append("chat_id", chatId);
+    form.append("photo", imageBuffer, { filename: "evento.png" });
 
-    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+    // Botão inline (opcional)
+    if (slurl && slurl !== "") {
+      form.append(
+        "reply_markup",
+        JSON.stringify({
+          inline_keyboard: [
+            [{ text: "📍 Abrir no mapa", url: slurl }]
+          ]
+        })
+      );
+    }
+
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: form
     });
 
     res.json({ ok: true });
@@ -84,6 +132,6 @@ app.post("/sl", async (req, res) => {
 });
 
 // ================= START =================
-app.listen(process.env.PORT || 3000, () =>
-  console.log("ILHA SALINAS — Telegram ONLINE (SEM IMAGEM)")
-);
+app.listen(process.env.PORT || 3000, () => {
+  console.log("✅ ILHA SALINAS — Telegram ONLINE (CARD MODE)");
+});
