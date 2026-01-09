@@ -17,6 +17,10 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
 const DEBOUNCE_TIME = 15000;
 const lastEvent = new Map();
 
+// ================= ONLINE STATE =================
+let onlineUsers = [];
+let lastOnlineUpdate = null;
+
 // ================= UTIL =================
 function nowFormatted() {
   return new Date().toLocaleString("pt-BR", {
@@ -39,7 +43,7 @@ function isSpam(username, event) {
   return false;
 }
 
-// ================= ROUTE =================
+// ================= SL → TELEGRAM (ENTRADA / SAÍDA) =================
 app.post("/sl", async (req, res) => {
   try {
     console.log("SL CHEGOU:", req.body);
@@ -79,8 +83,6 @@ app.post("/sl", async (req, res) => {
       }
     };
 
-    console.log("ENVIANDO TEXTO PARA TELEGRAM:", payload);
-
     const tgRes = await fetch(
       `https://api.telegram.org/bot${TOKEN}/sendMessage`,
       {
@@ -93,18 +95,64 @@ app.post("/sl", async (req, res) => {
     const tgJson = await tgRes.json();
     console.log("TELEGRAM:", tgJson);
 
-    if (!tgJson.ok) {
-      return res.status(500).json(tgJson);
-    }
-
     res.json({ ok: true });
   } catch (err) {
-    console.error("❌ ERRO GERAL:", err);
+    console.error("❌ ERRO SL:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
+// ================= SL → BACKEND (LISTA ONLINE) =================
+app.post("/online", (req, res) => {
+  const { users } = req.body;
+
+  if (!Array.isArray(users)) {
+    return res.status(400).json({ error: "users inválido" });
+  }
+
+  onlineUsers = users;
+  lastOnlineUpdate = new Date();
+
+  console.log("ONLINE ATUALIZADO:", onlineUsers.length);
+  res.json({ ok: true });
+});
+
+// ================= TELEGRAM COMANDO /online =================
+app.post("/telegram", async (req, res) => {
+  const msg = req.body.message;
+  if (!msg || !msg.text) return res.json({ ok: true });
+
+  const chatId = msg.chat.id;
+
+  if (msg.text === "/online") {
+    let response;
+
+    if (onlineUsers.length === 0) {
+      response = "🔴 Ninguém online no momento.";
+    } else {
+      response =
+        `🟢 Usuários online (${onlineUsers.length})\n\n` +
+        onlineUsers.map(u => `👤 ${u}`).join("\n") +
+        `\n\n🕒 Atualizado às ${lastOnlineUpdate.toLocaleTimeString("pt-BR")}`;
+    }
+
+    await fetch(
+      `https://api.telegram.org/bot${TOKEN}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: response
+        })
+      }
+    );
+  }
+
+  res.json({ ok: true });
+});
+
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — TELEGRAM TEXTO SIMPLES ONLINE");
+  console.log("✅ ILHA SALINAS — TELEGRAM ONLINE + /online ATIVO");
 });
