@@ -1,7 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import FormData from "form-data";
-import { createCanvas } from "canvas";
+import { createCanvas, loadImage } from "canvas";
 
 const app = express();
 app.use(express.json());
@@ -35,20 +35,22 @@ function nowFormatted() {
 function isSpam(username, event) {
   const key = `${username}:${event}`;
   const now = Date.now();
-
-  if (lastEvent.has(key) && now - lastEvent.get(key) < DEBOUNCE_TIME) {
-    return true;
-  }
-
+  if (lastEvent.has(key) && now - lastEvent.get(key) < DEBOUNCE_TIME) return true;
   lastEvent.set(key, now);
   return false;
 }
 
 // ================= CARD IMAGE =================
-function generateCard({ event, username, region, parcel, time }) {
-  const width = 600;
-  const height = 260;
-
+async function generateCard({
+  event,
+  username,
+  region,
+  parcel,
+  time,
+  avatarUrl
+}) {
+  const width = 720;
+  const height = 300;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
@@ -58,23 +60,41 @@ function generateCard({ event, username, region, parcel, time }) {
 
   // Barra lateral
   ctx.fillStyle = event === "ENTROU" ? "#2ecc71" : "#e74c3c";
-  ctx.fillRect(0, 0, 8, height);
+  ctx.fillRect(0, 0, 10, height);
 
-  // Título
+  // Status
+  ctx.fillStyle = event === "ENTROU" ? "#2ecc71" : "#e74c3c";
+  ctx.beginPath();
+  ctx.arc(44, 44, 14, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 28px Sans-serif";
-  ctx.fillText(
-    event === "ENTROU" ? "🟢 ENTROU" : "🔴 SAIU",
-    24,
-    46
-  );
+  ctx.font = "bold 30px Sans-serif";
+  ctx.fillText(event, 70, 54);
 
-  // Conteúdo
+  // Avatar (recorte circular)
+  const avatar = await loadImage(avatarUrl);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(100, 150, 48, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.clip();
+  ctx.drawImage(avatar, 52, 102, 96, 96);
+  ctx.restore();
+
+  // Texto
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "22px Sans-serif";
+  ctx.fillText(username, 170, 125);
+
+  ctx.fillStyle = "#cccccc";
   ctx.font = "20px Sans-serif";
-  ctx.fillText(`👤 ${username}`, 24, 96);
-  ctx.fillText(`📍 Região: ${region}`, 24, 132);
-  ctx.fillText(`🏡 Parcel: ${parcel}`, 24, 168);
-  ctx.fillText(`🕒 ${time}`, 24, 204);
+  ctx.fillText(`📍 Região: ${region}`, 170, 165);
+  ctx.fillText(`🏡 Parcel: ${parcel}`, 170, 200);
+
+  ctx.fillStyle = "#aaaaaa";
+  ctx.font = "18px Sans-serif";
+  ctx.fillText(`🕒 ${time}`, 170, 240);
 
   return canvas.toBuffer("image/png");
 }
@@ -82,9 +102,9 @@ function generateCard({ event, username, region, parcel, time }) {
 // ================= ROUTE =================
 app.post("/sl", async (req, res) => {
   try {
-    const { event, username, region, parcel, slurl } = req.body;
+    const { event, username, region, parcel, slurl, avatar } = req.body;
 
-    if (!event || !username || !region || !parcel) {
+    if (!event || !username || !region || !parcel || !avatar) {
       return res.status(400).json({ error: "Payload incompleto" });
     }
 
@@ -95,20 +115,20 @@ app.post("/sl", async (req, res) => {
     const isEntrada = event === "ENTROU";
     const chatId = isEntrada ? CHAT_ENTRADA : CHAT_SAIDA;
 
-    const imageBuffer = generateCard({
+    const imageBuffer = await generateCard({
       event,
       username,
       region,
       parcel,
-      time: nowFormatted()
+      time: nowFormatted(),
+      avatarUrl: avatar
     });
 
     const form = new FormData();
     form.append("chat_id", chatId);
     form.append("photo", imageBuffer, { filename: "evento.png" });
 
-    // Botão inline (opcional)
-    if (slurl && slurl !== "") {
+    if (slurl) {
       form.append(
         "reply_markup",
         JSON.stringify({
@@ -126,12 +146,12 @@ app.post("/sl", async (req, res) => {
 
     res.json({ ok: true });
   } catch (err) {
-    console.error("Erro SL → Telegram:", err);
+    console.error("Erro:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — Telegram ONLINE (CARD MODE)");
+  console.log("✅ ILHA SALINAS — Telegram ONLINE (CARD + AVATAR)");
 });
