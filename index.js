@@ -18,7 +18,7 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
 }
 
 // ================= ANTI-SPAM =================
-const DEBOUNCE_TIME = 15000;
+const DEBOUNCE_TIME = 15000; // 15s
 const lastEvent = new Map();
 
 // ================= UTIL =================
@@ -33,8 +33,8 @@ function nowFormatted() {
   });
 }
 
-function isSpam(username, event) {
-  const key = `${username}:${event}`;
+function isSpam(username, evt) {
+  const key = `${username}:${evt}`;
   const now = Date.now();
 
   if (lastEvent.has(key) && now - lastEvent.get(key) < DEBOUNCE_TIME) {
@@ -50,9 +50,9 @@ app.post("/sl", async (req, res) => {
   try {
     console.log("📥 SL CHEGOU:", req.body);
 
+    // 👉 parcel vem DO LSL e NÃO é alterado
     const { event, username, region, parcel, slurl } = req.body;
 
-    // 👉 parcel VEM DO SL E NÃO É ALTERADO
     if (!event || !username || !region || !parcel) {
       return res.status(400).json({ error: "Payload incompleto" });
     }
@@ -109,5 +109,5 @@ app.post("/sl", async (req, res) => {
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — Telegram ONLINE (TEXTO LIMPO)");
+  console.log("✅ ILHA SALINAS — Telegram ONLINE (TEXTO / PARCEL REAL)");
 });
