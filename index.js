@@ -9,13 +9,9 @@ const TOKEN = process.env.TELEGRAM_TOKEN;
 const CHAT_ENTRADA = process.env.TELEGRAM_CHAT_ENTRADA;
 const CHAT_SAIDA = process.env.TELEGRAM_CHAT_SAIDA;
 
-// Anti-spam (em ms)
-const DEBOUNCE_TIME = 15000; // 15 segundos
-
-// Memória anti-flood
+// Anti-spam (ms)
+const DEBOUNCE_TIME = 15000;
 const lastEvent = new Map();
-// key = username:event
-// value = timestamp
 
 // ================= UTIL =================
 function nowFormatted() {
@@ -34,9 +30,8 @@ function isSpam(username, event) {
   const key = `${username}:${event}`;
   const now = Date.now();
 
-  if (lastEvent.has(key)) {
-    const diff = now - lastEvent.get(key);
-    if (diff < DEBOUNCE_TIME) return true;
+  if (lastEvent.has(key) && now - lastEvent.get(key) < DEBOUNCE_TIME) {
+    return true;
   }
 
   lastEvent.set(key, now);
@@ -48,7 +43,6 @@ app.post("/sl", async (req, res) => {
   try {
     const { event, username, region, parcel, slurl } = req.body;
 
-    // Anti-spam
     if (isSpam(username, event)) {
       return res.json({ ok: true, skipped: "debounce" });
     }
@@ -65,22 +59,16 @@ app.post("/sl", async (req, res) => {
 
     const payload = {
       chat_id: chatId,
-      text
+      text: text,
+      disable_web_page_preview: true, // 🔥 MATA A IMAGEM GRANDE
+      reply_markup: slurl
+        ? {
+            inline_keyboard: [
+              [{ text: "📍 Abrir no mapa", url: slurl }]
+            ]
+          }
+        : undefined
     };
-
-    // Botão inline opcional
-    if (slurl && slurl !== "") {
-      payload.reply_markup = {
-        inline_keyboard: [
-          [
-            {
-              text: "📍 Abrir no mapa",
-              url: slurl
-            }
-          ]
-        ]
-      };
-    }
 
     await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
       method: "POST",
@@ -97,5 +85,5 @@ app.post("/sl", async (req, res) => {
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () =>
-  console.log("ILHA SALINAS — SL → Telegram ONLINE 🚀")
+  console.log("ILHA SALINAS — Telegram ONLINE (SEM IMAGEM)")
 );
