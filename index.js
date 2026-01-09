@@ -3,7 +3,6 @@
 // =====================================================
 
 import express from "express";
-import fetch from "node-fetch";
 import fs from "fs";
 import { createCanvas, loadImage } from "canvas";
 
