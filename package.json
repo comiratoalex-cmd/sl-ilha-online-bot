@@ -1,13 +1,14 @@
 {
   "name": "sl-ilha-online-bot",
   "version": "1.0.0",
-  "type": "module",
+  "description": "Backend central - SL, Telegram e Discord",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "@napi-rs/canvas": "^0.1.44"
+    "express": "^4.19.2",
+    "node-fetch": "^3.3.2"
   }
 }
