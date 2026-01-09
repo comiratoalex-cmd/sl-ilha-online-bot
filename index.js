@@ -1,6 +1,5 @@
 import express from "express";
 import fetch from "node-fetch";
-import FormData from "form-data";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 
 const app = express();
