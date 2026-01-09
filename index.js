@@ -11,32 +11,35 @@ app.post("/sl", async (req, res) => {
   try {
     const { event, username, photo, region, parcel, slurl } = req.body;
 
-    // 1️⃣ FOTO + TEXTO (SEM LINK)
+    const payload = {
+      chat_id: CHAT_ID,
+      photo: photo,
+      caption:
+        `${event === "ENTROU" ? "🟢" : "🔴"} ${event}\n` +
+        `👤 ${username}\n` +
+        `📍 Região: ${region}\n` +
+        `🏡 Parcel: ${parcel}`
+    };
+
+    // BOTÃO INLINE (se existir link)
+    if (slurl && slurl !== "") {
+      payload.reply_markup = {
+        inline_keyboard: [
+          [
+            {
+              text: "📍 Abrir no mapa",
+              url: slurl
+            }
+          ]
+        ]
+      };
+    }
+
     await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: CHAT_ID,
-        photo: photo,
-        caption:
-          `${event === "ENTROU" ? "🟢" : "🔴"} ${event}\n` +
-          `👤 ${username}\n` +
-          `📍 Região: ${region}\n` +
-          `🏡 Parcel: ${parcel}`
-      })
+      body: JSON.stringify(payload)
     });
-
-    // 2️⃣ LINK EM MENSAGEM SEPARADA
-    if (slurl && slurl !== "") {
-      await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: CHAT_ID,
-          text: `🔗 Localização:\n${slurl}`
-        })
-      });
-    }
 
     res.json({ ok: true });
   } catch (err) {
@@ -46,5 +49,5 @@ app.post("/sl", async (req, res) => {
 });
 
 app.listen(process.env.PORT || 3000, () =>
-  console.log("SL → Telegram (opção 1) online")
+  console.log("SL → Telegram (botão inline) online")
 );
