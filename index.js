@@ -1,7 +1,11 @@
+// =====================================================
+// ILHA SALINAS — TELEGRAM (TEXTO LIMPO / PARCEL REAL)
+// =====================================================
+
 import express from "express";
 
 const app = express();
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "1mb" }));
 
 // ================= CONFIG =================
 const TOKEN = process.env.TELEGRAM_TOKEN;
@@ -14,7 +18,7 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
 }
 
 // ================= ANTI-SPAM =================
-const DEBOUNCE_TIME = 15000;
+const DEBOUNCE_TIME = 15000; // 15s
 const lastEvent = new Map();
 
 // ================= UTIL =================
@@ -29,12 +33,14 @@ function nowFormatted() {
   });
 }
 
-function isSpam(username, event) {
-  const key = `${username}:${event}`;
+function isSpam(username, evt) {
+  const key = `${username}:${evt}`;
   const now = Date.now();
+
   if (lastEvent.has(key) && now - lastEvent.get(key) < DEBOUNCE_TIME) {
     return true;
   }
+
   lastEvent.set(key, now);
   return false;
 }
@@ -42,11 +48,12 @@ function isSpam(username, event) {
 // ================= ROUTE =================
 app.post("/sl", async (req, res) => {
   try {
-    console.log("SL CHEGOU:", req.body);
+    console.log("📥 SL CHEGOU:", req.body);
 
-    const { event, username, region, parcel, avatar, slurl } = req.body;
+    // 👉 parcel vem DO LSL e NÃO é alterado
+    const { event, username, region, parcel, slurl } = req.body;
 
-    if (!event || !username || !region || !parcel || !avatar) {
+    if (!event || !username || !region || !parcel) {
       return res.status(400).json({ error: "Payload incompleto" });
     }
 
@@ -57,15 +64,17 @@ app.post("/sl", async (req, res) => {
 
     const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
 
+    // ================= TELEGRAM =================
     const payload = {
       chat_id: chatId,
-      photo: avatar, // URL direta do SL
-      caption:
-        `${event === "ENTROU" ? "🟢" : "🔴"} ${event}\n` +
+      text:
+        `${event === "ENTROU" ? "🟢" : "🔴"} *${event}*\n` +
         `👤 ${username}\n` +
         `📍 Região: ${region}\n` +
         `🏡 Parcel: ${parcel}\n` +
         `🕒 ${nowFormatted()}`,
+      parse_mode: "Markdown",
+      disable_web_page_preview: true,
       reply_markup: slurl
         ? {
             inline_keyboard: [
@@ -75,10 +84,8 @@ app.post("/sl", async (req, res) => {
         : undefined
     };
 
-    console.log("ENVIANDO PARA TELEGRAM:", payload);
-
     const tgRes = await fetch(
-      `https://api.telegram.org/bot${TOKEN}/sendPhoto`,
+      `https://api.telegram.org/bot${TOKEN}/sendMessage`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -87,7 +94,7 @@ app.post("/sl", async (req, res) => {
     );
 
     const tgJson = await tgRes.json();
-    console.log("TELEGRAM RESPOSTA:", tgJson);
+    console.log("📨 TELEGRAM:", tgJson);
 
     if (!tgJson.ok) {
       return res.status(500).json(tgJson);
@@ -95,12 +102,12 @@ app.post("/sl", async (req, res) => {
 
     res.json({ ok: true });
   } catch (err) {
-    console.error("❌ ERRO GERAL:", err);
+    console.error("❌ ERRO:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — Telegram ONLINE (URL MODE)");
+  console.log("✅ ILHA SALINAS — Telegram ONLINE (TEXTO / PARCEL REAL)");
 });
