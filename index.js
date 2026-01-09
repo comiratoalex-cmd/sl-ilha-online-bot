@@ -17,11 +17,11 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
 const DEBOUNCE_TIME = 15000;
 const lastEvent = new Map();
 
-// ================= ONLINE STATE =================
+// ================= ONLINE =================
 let onlineUsers = [];
 let lastOnlineUpdate = null;
 
-// ================= TELEGRAM → SL STATE =================
+// ================= TELEGRAM → SL =================
 let lastMessageToSL = "";
 
 // ================= UTIL =================
@@ -46,24 +46,17 @@ function isSpam(username, event) {
   return false;
 }
 
-// =====================================================
-// SL → TELEGRAM (ENTRADA / SAÍDA)
-// =====================================================
+// ================= SL → TELEGRAM =================
 app.post("/sl", async (req, res) => {
   try {
     const { event, username, region, parcel, slurl } = req.body;
-
-    if (!event || !username || !region || !parcel || !slurl) {
+    if (!event || !username || !region || !parcel || !slurl)
       return res.status(400).json({ error: "Payload incompleto" });
-    }
 
-    if (isSpam(username, event)) {
+    if (isSpam(username, event))
       return res.json({ ok: true, skipped: true });
-    }
 
     const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
-    const profileUrl =
-      "https://my.secondlife.com/" + encodeURIComponent(username);
 
     const text =
       `${event === "ENTROU" ? "🟢 ENTRADA" : "🔴 SAÍDA"}\n\n` +
@@ -72,146 +65,89 @@ app.post("/sl", async (req, res) => {
       `🏡 Parcel: ${parcel}\n` +
       `🕒 ${nowFormatted()}`;
 
-    await fetch(
-      `https://api.telegram.org/bot${TOKEN}/sendMessage`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text,
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: "📍 Abrir no mapa", url: slurl },
-                { text: "🖼 Ver perfil", url: profileUrl }
-              ]
-            ]
-          }
-        })
-      }
-    );
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        reply_markup: {
+          inline_keyboard: [[{ text: "📍 Abrir no mapa", url: slurl }]]
+        }
+      })
+    });
 
     res.json({ ok: true });
-  } catch (err) {
-    console.error("❌ ERRO /sl:", err);
-    res.status(500).json({ error: err.message });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
   }
 });
 
-// =====================================================
-// SL → BACKEND (LISTA ONLINE)
-// =====================================================
+// ================= SL → ONLINE =================
 app.post("/online", (req, res) => {
-  const { users } = req.body;
-
-  if (!Array.isArray(users)) {
+  if (!Array.isArray(req.body.users))
     return res.status(400).json({ error: "users inválido" });
-  }
 
-  onlineUsers = users;
+  onlineUsers = req.body.users;
   lastOnlineUpdate = new Date();
-
-  console.log("ONLINE ATUALIZADO:", users.length);
   res.json({ ok: true });
 });
 
-// =====================================================
-// TELEGRAM → BACKEND (WEBHOOK)
-// Comandos: /online  |  /say
-// =====================================================
+// ================= TELEGRAM WEBHOOK =================
 app.post("/telegram", async (req, res) => {
-  console.log("TELEGRAM UPDATE:", JSON.stringify(req.body));
-
   const msg = req.body.message;
   if (!msg || !msg.text) return res.json({ ok: true });
 
   const chatId = msg.chat.id;
   const text = msg.text.trim();
-
-  // aceita /comando ou /comando@BotName
   const command = text.split(" ")[0].split("@")[0];
 
-  // ---------- /online ----------
+  // /online
   if (command === "/online") {
-    let response;
-
-    if (!onlineUsers.length) {
-      response = "🔴 Ninguém online no momento.";
-    } else {
-      response =
-        `🟢 Usuários online (${onlineUsers.length})\n\n` +
+    const response = onlineUsers.length
+      ? `🟢 Usuários online (${onlineUsers.length})\n\n` +
         onlineUsers.map(u => `👤 ${u}`).join("\n") +
-        `\n\n🕒 Atualizado às ${lastOnlineUpdate.toLocaleTimeString("pt-BR")}`;
-    }
+        `\n\n🕒 ${lastOnlineUpdate.toLocaleTimeString("pt-BR")}`
+      : "🔴 Ninguém online no momento.";
 
-    await fetch(
-      `https://api.telegram.org/bot${TOKEN}/sendMessage`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: response
-        })
-      }
-    );
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: response })
+    });
   }
 
-  // ---------- /say ----------
+  // /say
   if (command === "/say") {
     const message = text.replace(/^\/say(@\w+)?\s*/i, "");
-
-    if (!message) {
-      await fetch(
-        `https://api.telegram.org/bot${TOKEN}/sendMessage`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: "❌ Uso correto: /say sua mensagem"
-          })
-        }
-      );
-      return res.json({ ok: true });
-    }
+    if (!message) return res.json({ ok: true });
 
     const from = msg.from.username || msg.from.first_name || "Telegram";
+    lastMessageToSL = `📢 Telegram (${from}):\n${message}`;
 
-    lastMessageToSL =
-      "📢 Telegram (" + from + "):\n" + message;
-
-    await fetch(
-      `https://api.telegram.org/bot${TOKEN}/sendMessage`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: "✅ Mensagem enviada ao grupo do SL"
-        })
-      }
-    );
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: "✅ Mensagem enviada ao grupo do SL"
+      })
+    });
   }
 
   res.json({ ok: true });
 });
 
-// =====================================================
-// SL → BACKEND (POLLING DA MENSAGEM DO TELEGRAM)
-// =====================================================
+// ================= SL POLLING =================
 app.get("/say", (req, res) => {
-  if (!lastMessageToSL) {
-    return res.send("");
-  }
-
+  if (!lastMessageToSL) return res.send("");
   const msg = lastMessageToSL;
-  lastMessageToSL = ""; // limpa após leitura
+  lastMessageToSL = "";
   res.send(msg);
 });
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — TELEGRAM + SL + /online + /say ATIVO");
+  console.log("✅ ILHA SALINAS — TELEGRAM + SL ATIVO");
 });
