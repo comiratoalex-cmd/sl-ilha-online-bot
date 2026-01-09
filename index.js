@@ -1,69 +1,110 @@
 import express from "express";
-import fetch from "node-fetch";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 
 // ================= CONFIG =================
 const TOKEN = process.env.TELEGRAM_TOKEN;
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const CHAT_ENTRADA = process.env.TELEGRAM_CHAT_ENTRADA;
+const CHAT_SAIDA = process.env.TELEGRAM_CHAT_SAIDA;
 
-// ================= ENDPOINT =================
+if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
+  console.error("❌ Variáveis de ambiente ausentes");
+  process.exit(1);
+}
+
+// ================= ANTI-SPAM =================
+const DEBOUNCE_TIME = 15000;
+const lastEvent = new Map();
+
+// ================= UTIL =================
+function nowFormatted() {
+  return new Date().toLocaleString("pt-BR", {
+    timeZone: "Europe/Dublin",
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  });
+}
+
+function isSpam(username, event) {
+  const key = `${username}:${event}`;
+  const now = Date.now();
+  if (lastEvent.has(key) && now - lastEvent.get(key) < DEBOUNCE_TIME) {
+    return true;
+  }
+  lastEvent.set(key, now);
+  return false;
+}
+
+// ================= ROUTE =================
 app.post("/sl", async (req, res) => {
   try {
-    const {
-      event,      // "ENTROU" | "SAIU"
-      username,   // alexcominatto.bechir
-      photo,      // https://my-secondlife-agni.akamaized.net/users/...
-      region,     // Pelican Cove
-      parcel,     // :::PRAIA DE SALINAS:::
-      slurl       // http://maps.secondlife.com/...
-    } = req.body;
+    console.log("SL CHEGOU:", req.body);
 
-    if (!event || !username || !photo || !region || !parcel) {
-      return res.status(400).json({ error: "Dados incompletos" });
+    const { event, username, region, parcel, avatar, slurl } = req.body;
+
+    if (!event || !username || !region || !parcel || !avatar || !slurl) {
+      return res.status(400).json({ error: "Payload incompleto" });
     }
 
-    const caption =
-      `${event === "ENTROU" ? "🟢" : "🔴"} ${event}\n` +
-      `👤 ${username}\n` +
-      `📍 Região: ${region}\n` +
-      `🏡 Parcel: ${parcel}`;
+    if (isSpam(username, event)) {
+      return res.json({ ok: true, skipped: true });
+    }
+
+    const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
+
+    // Link direto do perfil SL (foto)
+    const profilePhotoUrl =
+      "https://my.secondlife.com/" + encodeURIComponent(username);
 
     const payload = {
-      chat_id: CHAT_ID,
-      photo: photo,
-      caption: caption
-    };
-
-    // BOTÃO INLINE (sem link no texto)
-    if (slurl && slurl !== "") {
-      payload.reply_markup = {
+      chat_id: chatId,
+      photo: avatar,
+      caption:
+        `${event === "ENTROU" ? "🟢" : "🔴"} ${event}\n` +
+        `👤 ${username}\n` +
+        `📍 Região: ${region}\n` +
+        `🏡 Parcel: ${parcel}\n` +
+        `🕒 ${nowFormatted()}`,
+      reply_markup: {
         inline_keyboard: [
           [
-            {
-              text: "📍 Abrir no mapa",
-              url: slurl
-            }
+            { text: "📍 Abrir no mapa", url: slurl },
+            { text: "🖼 Ver foto do perfil", url: profilePhotoUrl }
           ]
         ]
-      };
-    }
+      }
+    };
 
-    await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    console.log("ENVIANDO PARA TELEGRAM:", payload);
+
+    const tgRes = await fetch(
+      `https://api.telegram.org/bot${TOKEN}/sendPhoto`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }
+    );
+
+    const tgJson = await tgRes.json();
+    console.log("TELEGRAM:", tgJson);
+
+    if (!tgJson.ok) {
+      return res.status(500).json(tgJson);
+    }
 
     res.json({ ok: true });
   } catch (err) {
-    console.error("Erro Telegram:", err);
+    console.error("❌ ERRO GERAL:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("🟢 SL → Telegram (Botão Inline) ONLINE");
+  console.log("✅ ILHA SALINAS — TELEGRAM ENTRADA/SAÍDA SIMPLES ONLINE");
 });
