@@ -130,25 +130,29 @@ app.post("/sl", async (req, res) => {
       avatarUrl: avatar
     });
 
-    const form = new FormData();
-    form.append("chat_id", chatId);
-    form.append("photo", imageBuffer, { filename: "evento.png" });
+   const form = new FormData();
+form.append("chat_id", chatId);
+form.append(
+  "photo",
+  new Blob([imageBuffer], { type: "image/png" }),
+  "evento.png"
+);
 
-    if (slurl) {
-      form.append(
-        "reply_markup",
-        JSON.stringify({
-          inline_keyboard: [
-            [{ text: "📍 Abrir no mapa", url: slurl }]
-          ]
-        })
-      );
-    }
+if (slurl) {
+  form.append(
+    "reply_markup",
+    JSON.stringify({
+      inline_keyboard: [
+        [{ text: "📍 Abrir no mapa", url: slurl }]
+      ]
+    })
+  );
+}
 
-    await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
-      method: "POST",
-      body: form
-    });
+await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
+  method: "POST",
+  body: form
+});
 
     res.json({ ok: true });
   } catch (err) {
