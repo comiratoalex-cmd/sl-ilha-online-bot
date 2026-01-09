@@ -1,5 +1,6 @@
 // =====================================================
 // ILHA SALINAS — TELEGRAM COM THUMBNAIL PEQUENA (CACHE)
+// Node.js 18+ | Railway | SEM form-data
 // =====================================================
 
 import express from "express";
@@ -35,18 +36,17 @@ async function getAvatarThumbnail(uuid) {
     return filePath;
   }
 
-  // Foto do perfil do avatar
-  const avatarURL = `https://secondlife.com/my/avatar/${uuid}`;
+  // ⚠️ imagem pública do perfil SL
+  const avatarURL = `https://my-secondlife-agni.akamaized.net/users/${uuid}/sl_image.png`;
 
   const img = await loadImage(avatarURL);
 
-  const SIZE = 120; // 🔥 controle total do tamanho
+  const SIZE = 120;
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext("2d");
 
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, SIZE, SIZE);
-
   ctx.drawImage(img, 0, 0, SIZE, SIZE);
 
   fs.writeFileSync(filePath, canvas.toBuffer("image/png"));
@@ -55,10 +55,15 @@ async function getAvatarThumbnail(uuid) {
 
 // ================= TELEGRAM =================
 async function sendTelegramWithThumb(chatId, thumbPath, text, slurl) {
-  const form = new FormData();
+  const buffer = fs.readFileSync(thumbPath);
 
+  const form = new FormData();
+  form.append(
+    "photo",
+    new Blob([buffer], { type: "image/png" }),
+    "avatar.png"
+  );
   form.append("chat_id", chatId);
-  form.append("photo", fs.createReadStream(thumbPath));
   form.append("caption", text);
   form.append("parse_mode", "Markdown");
 
@@ -73,15 +78,20 @@ async function sendTelegramWithThumb(chatId, thumbPath, text, slurl) {
     );
   }
 
-  await fetch(
+  const r = await fetch(
     `https://api.telegram.org/bot${TOKEN}/sendPhoto`,
     { method: "POST", body: form }
   );
+
+  const j = await r.json();
+  console.log("📨 TELEGRAM:", j);
 }
 
 // ================= ROUTE =================
 app.post("/sl", async (req, res) => {
   try {
+    console.log("🔥 CHEGOU DO SL:", req.body);
+
     const { event, username, uuid, region, parcel, slurl } = req.body;
 
     if (!event || !username || !uuid || !region || !parcel) {
@@ -97,7 +107,6 @@ app.post("/sl", async (req, res) => {
       `🏡 Parcel: ${parcel}`;
 
     const thumbPath = await getAvatarThumbnail(uuid);
-
     await sendTelegramWithThumb(chatId, thumbPath, text, slurl);
 
     res.json({ ok: true });
