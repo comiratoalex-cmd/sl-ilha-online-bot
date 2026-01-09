@@ -46,8 +46,6 @@ function isSpam(username, event) {
 // ================= SL → TELEGRAM (ENTRADA / SAÍDA) =================
 app.post("/sl", async (req, res) => {
   try {
-    console.log("SL CHEGOU:", req.body);
-
     const { event, username, region, parcel, slurl } = req.body;
 
     if (!event || !username || !region || !parcel || !slurl) {
@@ -59,9 +57,7 @@ app.post("/sl", async (req, res) => {
     }
 
     const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
-
-    const profileUrl =
-      "https://my.secondlife.com/" + encodeURIComponent(username);
+    const profileUrl = "https://my.secondlife.com/" + encodeURIComponent(username);
 
     const text =
       `${event === "ENTROU" ? "🟢 ENTRADA" : "🔴 SAÍDA"}\n\n` +
@@ -70,34 +66,29 @@ app.post("/sl", async (req, res) => {
       `🏡 Parcel: ${parcel}\n` +
       `🕒 ${nowFormatted()}`;
 
-    const payload = {
-      chat_id: chatId,
-      text,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "📍 Abrir no mapa", url: slurl },
-            { text: "🖼 Ver perfil", url: profileUrl }
-          ]
-        ]
-      }
-    };
-
-    const tgRes = await fetch(
+    await fetch(
       `https://api.telegram.org/bot${TOKEN}/sendMessage`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "📍 Abrir no mapa", url: slurl },
+                { text: "🖼 Ver perfil", url: profileUrl }
+              ]
+            ]
+          }
+        })
       }
     );
 
-    const tgJson = await tgRes.json();
-    console.log("TELEGRAM:", tgJson);
-
     res.json({ ok: true });
   } catch (err) {
-    console.error("❌ ERRO SL:", err);
+    console.error("❌ ERRO /sl:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -113,21 +104,27 @@ app.post("/online", (req, res) => {
   onlineUsers = users;
   lastOnlineUpdate = new Date();
 
-  console.log("ONLINE ATUALIZADO:", onlineUsers.length);
+  console.log("ONLINE ATUALIZADO:", users.length);
   res.json({ ok: true });
 });
 
-// ================= TELEGRAM COMANDO /online =================
+// ================= TELEGRAM /online (GRUPO + PRIVADO) =================
 app.post("/telegram", async (req, res) => {
+  console.log("TELEGRAM UPDATE:", JSON.stringify(req.body));
+
   const msg = req.body.message;
   if (!msg || !msg.text) return res.json({ ok: true });
 
   const chatId = msg.chat.id;
+  const text = msg.text.trim();
 
-  if (msg.text === "/online") {
+  // aceita /online ou /online@BotName
+  const command = text.split(" ")[0].split("@")[0];
+
+  if (command === "/online") {
     let response;
 
-    if (onlineUsers.length === 0) {
+    if (!onlineUsers.length) {
       response = "🔴 Ninguém online no momento.";
     } else {
       response =
@@ -154,5 +151,5 @@ app.post("/telegram", async (req, res) => {
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — TELEGRAM ONLINE + /online ATIVO");
+  console.log("✅ ILHA SALINAS — TELEGRAM GRUPO + /online ATIVO");
 });
