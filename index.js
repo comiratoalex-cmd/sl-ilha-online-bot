@@ -1,12 +1,8 @@
 // =====================================================
-// ILHA SALINAS — TELEGRAM COM THUMBNAIL PEQUENA (CACHE)
-// Node.js 18+ | Railway | SEM form-data
+// ILHA SALINAS — TELEGRAM (TEXTO + LINK AVATAR)
 // =====================================================
 
 import express from "express";
-import fs from "fs";
-import path from "path";
-import { createCanvas, loadImage } from "canvas";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -21,76 +17,10 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
   process.exit(1);
 }
 
-// ================= CACHE =================
-const CACHE_DIR = path.join(process.cwd(), "cache", "thumbs");
-if (!fs.existsSync(CACHE_DIR)) {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
-}
-
-// ================= THUMBNAIL =================
-async function getAvatarThumbnail(uuid) {
-  const filePath = path.join(CACHE_DIR, `${uuid}.png`);
-
-  // ✔ usa cache se existir
-  if (fs.existsSync(filePath)) {
-    return filePath;
-  }
-
-  // ⚠️ imagem pública do perfil SL
-  const avatarURL = `https://my-secondlife-agni.akamaized.net/users/${uuid}/sl_image.png`;
-
-  const img = await loadImage(avatarURL);
-
-  const SIZE = 120;
-  const canvas = createCanvas(SIZE, SIZE);
-  const ctx = canvas.getContext("2d");
-
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, SIZE, SIZE);
-  ctx.drawImage(img, 0, 0, SIZE, SIZE);
-
-  fs.writeFileSync(filePath, canvas.toBuffer("image/png"));
-  return filePath;
-}
-
-// ================= TELEGRAM =================
-async function sendTelegramWithThumb(chatId, thumbPath, text, slurl) {
-  const buffer = fs.readFileSync(thumbPath);
-
-  const form = new FormData();
-  form.append(
-    "photo",
-    new Blob([buffer], { type: "image/png" }),
-    "avatar.png"
-  );
-  form.append("chat_id", chatId);
-  form.append("caption", text);
-  form.append("parse_mode", "Markdown");
-
-  if (slurl) {
-    form.append(
-      "reply_markup",
-      JSON.stringify({
-        inline_keyboard: [
-          [{ text: "📍 Abrir no mapa", url: slurl }]
-        ]
-      })
-    );
-  }
-
-  const r = await fetch(
-    `https://api.telegram.org/bot${TOKEN}/sendPhoto`,
-    { method: "POST", body: form }
-  );
-
-  const j = await r.json();
-  console.log("📨 TELEGRAM:", j);
-}
-
 // ================= ROUTE =================
 app.post("/sl", async (req, res) => {
   try {
-    console.log("🔥 CHEGOU DO SL:", req.body);
+    console.log("📥 SL:", req.body);
 
     const { event, username, uuid, region, parcel, slurl } = req.body;
 
@@ -98,16 +28,45 @@ app.post("/sl", async (req, res) => {
       return res.status(400).json({ error: "Payload incompleto" });
     }
 
-    const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
+    const chatId = event === "ENTROU"
+      ? CHAT_ENTRADA
+      : CHAT_SAIDA;
 
-    const text =
-      `${event === "ENTROU" ? "🟢" : "🔴"} *${event}*\n` +
-      `👤 ${username}\n` +
-      `📍 Região: ${region}\n` +
-      `🏡 Parcel: ${parcel}`;
+    const avatarURL = `https://secondlife.com/my/avatar/${uuid}`;
 
-    const thumbPath = await getAvatarThumbnail(uuid);
-    await sendTelegramWithThumb(chatId, thumbPath, text, slurl);
+    const payload = {
+      chat_id: chatId,
+      text:
+        `${event === "ENTROU" ? "🟢" : "🔴"} *${event}*\n` +
+        `👤 ${username}\n` +
+        `📍 Região: ${region}\n` +
+        `🏡 Parcel: ${parcel}\n\n` +
+        `🔗 [Ver avatar](${avatarURL})`,
+      parse_mode: "Markdown",
+      disable_web_page_preview: true,
+      reply_markup: slurl
+        ? {
+            inline_keyboard: [
+              [
+                { text: "🔗 Ver avatar", url: avatarURL },
+                { text: "📍 Abrir no mapa", url: slurl }
+              ]
+            ]
+          }
+        : undefined
+    };
+
+    const tgRes = await fetch(
+      `https://api.telegram.org/bot${TOKEN}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }
+    );
+
+    const tgJson = await tgRes.json();
+    console.log("📨 Telegram:", tgJson);
 
     res.json({ ok: true });
   } catch (err) {
@@ -118,5 +77,5 @@ app.post("/sl", async (req, res) => {
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — Telegram com thumbnail ativa");
+  console.log("✅ ILHA SALINAS — Telegram TEXTO + LINK");
 });
