@@ -44,9 +44,9 @@ app.post("/sl", async (req, res) => {
   try {
     console.log("SL CHEGOU:", req.body);
 
-    const { event, username, region, parcel, avatar, slurl } = req.body;
+    const { event, username, region, parcel, slurl } = req.body;
 
-    if (!event || !username || !region || !parcel || !avatar || !slurl) {
+    if (!event || !username || !region || !parcel || !slurl) {
       return res.status(400).json({ error: "Payload incompleto" });
     }
 
@@ -56,33 +56,33 @@ app.post("/sl", async (req, res) => {
 
     const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
 
-    // Link direto do perfil SL (foto)
-    const profilePhotoUrl =
+    const profileUrl =
       "https://my.secondlife.com/" + encodeURIComponent(username);
+
+    const text =
+      `${event === "ENTROU" ? "🟢 ENTRADA" : "🔴 SAÍDA"}\n\n` +
+      `👤 ${username}\n` +
+      `📍 Região: ${region}\n` +
+      `🏡 Parcel: ${parcel}\n` +
+      `🕒 ${nowFormatted()}`;
 
     const payload = {
       chat_id: chatId,
-      photo: avatar,
-      caption:
-        `${event === "ENTROU" ? "🟢" : "🔴"} ${event}\n` +
-        `👤 ${username}\n` +
-        `📍 Região: ${region}\n` +
-        `🏡 Parcel: ${parcel}\n` +
-        `🕒 ${nowFormatted()}`,
+      text,
       reply_markup: {
         inline_keyboard: [
           [
             { text: "📍 Abrir no mapa", url: slurl },
-            { text: "🖼 Ver foto do perfil", url: profilePhotoUrl }
+            { text: "🖼 Ver perfil", url: profileUrl }
           ]
         ]
       }
     };
 
-    console.log("ENVIANDO PARA TELEGRAM:", payload);
+    console.log("ENVIANDO TEXTO PARA TELEGRAM:", payload);
 
     const tgRes = await fetch(
-      `https://api.telegram.org/bot${TOKEN}/sendPhoto`,
+      `https://api.telegram.org/bot${TOKEN}/sendMessage`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -106,5 +106,5 @@ app.post("/sl", async (req, res) => {
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — TELEGRAM ENTRADA/SAÍDA SIMPLES ONLINE");
+  console.log("✅ ILHA SALINAS — TELEGRAM TEXTO SIMPLES ONLINE");
 });
