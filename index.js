@@ -16,7 +16,7 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
   process.exit(1);
 }
 
-// Anti-spam (15s)
+// Anti-spam
 const DEBOUNCE_TIME = 15000;
 const lastEvent = new Map();
 
@@ -50,7 +50,7 @@ async function generateCard({
   avatarUrl
 }) {
   const width = 720;
-  const height = 300;
+  const height = 240;
 
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
@@ -63,41 +63,46 @@ async function generateCard({
   ctx.fillStyle = event === "ENTROU" ? "#2ecc71" : "#e74c3c";
   ctx.fillRect(0, 0, 10, height);
 
-  // Status
+  // Bolinha status
   ctx.beginPath();
-  ctx.arc(44, 44, 14, 0, Math.PI * 2);
+  ctx.arc(34, 34, 10, 0, Math.PI * 2);
   ctx.fill();
 
+  // Título
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 30px Sans-serif";
-  ctx.fillText(event, 70, 54);
+  ctx.font = "bold 26px Sans-serif";
+  ctx.fillText(event === "ENTROU" ? "ENTROU" : "SAIU", 54, 42);
 
-  // Avatar circular
+  // Avatar redondo grande
   try {
     const avatar = await loadImage(avatarUrl);
     ctx.save();
     ctx.beginPath();
-    ctx.arc(100, 150, 48, 0, Math.PI * 2);
+    ctx.arc(80, 130, 44, 0, Math.PI * 2);
     ctx.clip();
-    ctx.drawImage(avatar, 52, 102, 96, 96);
+    ctx.drawImage(avatar, 36, 86, 88, 88);
     ctx.restore();
-  } catch {
-    // fallback silencioso
+  } catch (e) {
+    console.log("Avatar não carregado");
   }
 
-  // Texto
+  // Nome
   ctx.fillStyle = "#ffffff";
-  ctx.font = "22px Sans-serif";
-  ctx.fillText(username, 170, 125);
+  ctx.font = "bold 22px Sans-serif";
+  ctx.fillText(username, 150, 110);
 
+  // Região
   ctx.fillStyle = "#cccccc";
-  ctx.font = "20px Sans-serif";
-  ctx.fillText(`📍 Região: ${region}`, 170, 165);
-  ctx.fillText(`🏡 Parcel: ${parcel}`, 170, 200);
-
-  ctx.fillStyle = "#aaaaaa";
   ctx.font = "18px Sans-serif";
-  ctx.fillText(`🕒 ${time}`, 170, 240);
+  ctx.fillText(`📍 Região: ${region}`, 150, 145);
+
+  // Parcel
+  ctx.fillText(`🏡 Parcel: ${parcel}`, 150, 175);
+
+  // Hora
+  ctx.fillStyle = "#aaaaaa";
+  ctx.font = "16px Sans-serif";
+  ctx.fillText(`🕒 ${time}`, 150, 205);
 
   return canvas.toBuffer("image/png");
 }
@@ -105,7 +110,7 @@ async function generateCard({
 // ================= ROUTE =================
 app.post("/sl", async (req, res) => {
   try {
-    const { event, username, region, parcel, slurl, avatar } = req.body;
+    const { event, username, region, parcel, avatar, slurl } = req.body;
 
     if (!event || !username || !region || !parcel || !avatar) {
       return res.status(400).json({ error: "Payload incompleto" });
@@ -155,5 +160,5 @@ app.post("/sl", async (req, res) => {
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — Telegram ONLINE (CARD + AVATAR)");
+  console.log("✅ ILHA SALINAS — Telegram ONLINE (CARD FINAL)");
 });
