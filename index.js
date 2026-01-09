@@ -1,7 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import FormData from "form-data";
-import { createCanvas, loadImage } from "canvas";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 
 const app = express();
 app.use(express.json());
@@ -16,7 +16,7 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
   process.exit(1);
 }
 
-// Anti-spam
+// Anti-spam (15s)
 const DEBOUNCE_TIME = 15000;
 const lastEvent = new Map();
 
@@ -51,6 +51,7 @@ async function generateCard({
 }) {
   const width = 720;
   const height = 300;
+
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
@@ -63,7 +64,6 @@ async function generateCard({
   ctx.fillRect(0, 0, 10, height);
 
   // Status
-  ctx.fillStyle = event === "ENTROU" ? "#2ecc71" : "#e74c3c";
   ctx.beginPath();
   ctx.arc(44, 44, 14, 0, Math.PI * 2);
   ctx.fill();
@@ -72,15 +72,18 @@ async function generateCard({
   ctx.font = "bold 30px Sans-serif";
   ctx.fillText(event, 70, 54);
 
-  // Avatar (recorte circular)
-  const avatar = await loadImage(avatarUrl);
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(100, 150, 48, 0, Math.PI * 2);
-  ctx.closePath();
-  ctx.clip();
-  ctx.drawImage(avatar, 52, 102, 96, 96);
-  ctx.restore();
+  // Avatar circular
+  try {
+    const avatar = await loadImage(avatarUrl);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(100, 150, 48, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(avatar, 52, 102, 96, 96);
+    ctx.restore();
+  } catch {
+    // fallback silencioso
+  }
 
   // Texto
   ctx.fillStyle = "#ffffff";
@@ -112,8 +115,7 @@ app.post("/sl", async (req, res) => {
       return res.json({ ok: true, skipped: "debounce" });
     }
 
-    const isEntrada = event === "ENTROU";
-    const chatId = isEntrada ? CHAT_ENTRADA : CHAT_SAIDA;
+    const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
 
     const imageBuffer = await generateCard({
       event,
@@ -146,7 +148,7 @@ app.post("/sl", async (req, res) => {
 
     res.json({ ok: true });
   } catch (err) {
-    console.error("Erro:", err);
+    console.error("Erro SL → Telegram:", err);
     res.status(500).json({ error: err.message });
   }
 });
