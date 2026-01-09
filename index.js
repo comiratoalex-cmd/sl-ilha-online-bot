@@ -9,19 +9,21 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 app.post("/sl", async (req, res) => {
   try {
-    const { event, username, photo, region, parcel, slurl } = req.body;
+    const { event, username, region, parcel, slurl } = req.body;
+
+    const text =
+      `${event === "ENTROU" ? "🟢" : "🔴"} ${event}\n` +
+      `👤 ${username}\n` +
+      `📍 Região: ${region}\n` +
+      `🏡 Parcel: ${parcel}`;
 
     const payload = {
       chat_id: CHAT_ID,
-      photo: photo,
-      caption:
-        `${event === "ENTROU" ? "🟢" : "🔴"} ${event}\n` +
-        `👤 ${username}\n` +
-        `📍 Região: ${region}\n` +
-        `🏡 Parcel: ${parcel}`
+      text: text,
+      parse_mode: "HTML"
     };
 
-    // BOTÃO INLINE (se existir link)
+    // BOTÃO INLINE (opcional)
     if (slurl && slurl !== "") {
       payload.reply_markup = {
         inline_keyboard: [
@@ -35,7 +37,7 @@ app.post("/sl", async (req, res) => {
       };
     }
 
-    await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -43,11 +45,11 @@ app.post("/sl", async (req, res) => {
 
     res.json({ ok: true });
   } catch (err) {
-    console.error(err);
+    console.error("Erro Telegram:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 app.listen(process.env.PORT || 3000, () =>
-  console.log("SL → Telegram (botão inline) online")
+  console.log("SL → Telegram ONLINE (texto limpo, ícone pequeno)")
 );
