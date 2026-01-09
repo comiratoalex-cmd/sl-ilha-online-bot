@@ -5,7 +5,6 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
-import FormData from "form-data";
 import { createCanvas, loadImage } from "canvas";
 
 const app = express();
