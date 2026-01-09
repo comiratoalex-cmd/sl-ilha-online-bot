@@ -1,5 +1,4 @@
 import express from "express";
-import fetch from "node-fetch";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 
 const app = express();
@@ -62,7 +61,7 @@ async function generateCard({
   ctx.fillStyle = event === "ENTROU" ? "#2ecc71" : "#e74c3c";
   ctx.fillRect(0, 0, 10, height);
 
-  // Bolinha status
+  // Status
   ctx.beginPath();
   ctx.arc(34, 34, 10, 0, Math.PI * 2);
   ctx.fill();
@@ -70,9 +69,9 @@ async function generateCard({
   // Título
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 26px Sans-serif";
-  ctx.fillText(event === "ENTROU" ? "ENTROU" : "SAIU", 54, 42);
+  ctx.fillText(event, 54, 42);
 
-  // Avatar redondo grande
+  // Avatar
   try {
     const avatar = await loadImage(avatarUrl);
     ctx.save();
@@ -81,24 +80,20 @@ async function generateCard({
     ctx.clip();
     ctx.drawImage(avatar, 36, 86, 88, 88);
     ctx.restore();
-  } catch (e) {
-    console.log("Avatar não carregado");
+  } catch {
+    console.warn("⚠️ Avatar não carregado");
   }
 
-  // Nome
+  // Texto
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 22px Sans-serif";
   ctx.fillText(username, 150, 110);
 
-  // Região
   ctx.fillStyle = "#cccccc";
   ctx.font = "18px Sans-serif";
   ctx.fillText(`📍 Região: ${region}`, 150, 145);
-
-  // Parcel
   ctx.fillText(`🏡 Parcel: ${parcel}`, 150, 175);
 
-  // Hora
   ctx.fillStyle = "#aaaaaa";
   ctx.font = "16px Sans-serif";
   ctx.fillText(`🕒 ${time}`, 150, 205);
@@ -116,52 +111,4 @@ app.post("/sl", async (req, res) => {
     }
 
     if (isSpam(username, event)) {
-      return res.json({ ok: true, skipped: "debounce" });
-    }
-
-    const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
-
-    const imageBuffer = await generateCard({
-      event,
-      username,
-      region,
-      parcel,
-      time: nowFormatted(),
-      avatarUrl: avatar
-    });
-
-   const form = new FormData();
-form.append("chat_id", chatId);
-form.append(
-  "photo",
-  new Blob([imageBuffer], { type: "image/png" }),
-  "evento.png"
-);
-
-if (slurl) {
-  form.append(
-    "reply_markup",
-    JSON.stringify({
-      inline_keyboard: [
-        [{ text: "📍 Abrir no mapa", url: slurl }]
-      ]
-    })
-  );
-}
-
-await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
-  method: "POST",
-  body: form
-});
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("Erro SL → Telegram:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ================= START =================
-app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — Telegram ONLINE (CARD FINAL)");
-});
+      return res.json({ ok: true, skipped:
