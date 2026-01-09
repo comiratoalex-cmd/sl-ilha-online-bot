@@ -22,8 +22,8 @@ app.post("/sl", async (req, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: CHAT_ID,
-        photo,
-        caption
+        photo: photo,
+        caption: caption
       })
     });
 
@@ -34,5 +34,5 @@ app.post("/sl", async (req, res) => {
 });
 
 app.listen(process.env.PORT || 3000, () =>
-  console.log("SL Telegram bridge online")
+  console.log("SL → Telegram online")
 );
