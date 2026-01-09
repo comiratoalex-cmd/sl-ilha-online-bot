@@ -21,6 +21,9 @@ const lastEvent = new Map();
 let onlineUsers = [];
 let lastOnlineUpdate = null;
 
+// ================= TELEGRAM → SL STATE =================
+let lastMessageToSL = "";
+
 // ================= UTIL =================
 function nowFormatted() {
   return new Date().toLocaleString("pt-BR", {
@@ -43,7 +46,9 @@ function isSpam(username, event) {
   return false;
 }
 
-// ================= SL → TELEGRAM (ENTRADA / SAÍDA) =================
+// =====================================================
+// SL → TELEGRAM (ENTRADA / SAÍDA)
+// =====================================================
 app.post("/sl", async (req, res) => {
   try {
     const { event, username, region, parcel, slurl } = req.body;
@@ -57,7 +62,8 @@ app.post("/sl", async (req, res) => {
     }
 
     const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
-    const profileUrl = "https://my.secondlife.com/" + encodeURIComponent(username);
+    const profileUrl =
+      "https://my.secondlife.com/" + encodeURIComponent(username);
 
     const text =
       `${event === "ENTROU" ? "🟢 ENTRADA" : "🔴 SAÍDA"}\n\n` +
@@ -93,7 +99,9 @@ app.post("/sl", async (req, res) => {
   }
 });
 
-// ================= SL → BACKEND (LISTA ONLINE) =================
+// =====================================================
+// SL → BACKEND (LISTA ONLINE)
+// =====================================================
 app.post("/online", (req, res) => {
   const { users } = req.body;
 
@@ -108,7 +116,10 @@ app.post("/online", (req, res) => {
   res.json({ ok: true });
 });
 
-// ================= TELEGRAM /online (GRUPO + PRIVADO) =================
+// =====================================================
+// TELEGRAM → BACKEND (WEBHOOK)
+// Comandos: /online  |  /say
+// =====================================================
 app.post("/telegram", async (req, res) => {
   console.log("TELEGRAM UPDATE:", JSON.stringify(req.body));
 
@@ -118,9 +129,10 @@ app.post("/telegram", async (req, res) => {
   const chatId = msg.chat.id;
   const text = msg.text.trim();
 
-  // aceita /online ou /online@BotName
+  // aceita /comando ou /comando@BotName
   const command = text.split(" ")[0].split("@")[0];
 
+  // ---------- /online ----------
   if (command === "/online") {
     let response;
 
@@ -146,10 +158,60 @@ app.post("/telegram", async (req, res) => {
     );
   }
 
+  // ---------- /say ----------
+  if (command === "/say") {
+    const message = text.replace(/^\/say(@\w+)?\s*/i, "");
+
+    if (!message) {
+      await fetch(
+        `https://api.telegram.org/bot${TOKEN}/sendMessage`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: "❌ Uso correto: /say sua mensagem"
+          })
+        }
+      );
+      return res.json({ ok: true });
+    }
+
+    const from = msg.from.username || msg.from.first_name || "Telegram";
+
+    lastMessageToSL =
+      "📢 Telegram (" + from + "):\n" + message;
+
+    await fetch(
+      `https://api.telegram.org/bot${TOKEN}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "✅ Mensagem enviada ao grupo do SL"
+        })
+      }
+    );
+  }
+
   res.json({ ok: true });
+});
+
+// =====================================================
+// SL → BACKEND (POLLING DA MENSAGEM DO TELEGRAM)
+// =====================================================
+app.get("/say", (req, res) => {
+  if (!lastMessageToSL) {
+    return res.send("");
+  }
+
+  const msg = lastMessageToSL;
+  lastMessageToSL = ""; // limpa após leitura
+  res.send(msg);
 });
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — TELEGRAM GRUPO + /online ATIVO");
+  console.log("✅ ILHA SALINAS — TELEGRAM + SL + /online + /say ATIVO");
 });
