@@ -4,87 +4,47 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// ======================================
-// CONFIGURAÇÃO FIXA (SEM VARIÁVEL)
-// ======================================
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+// ================= CONFIG =================
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const CHAT_ID   = process.env.CHAT_ID;
 
-// ⛔ COLOQUE SEU CHAT ID AQUI
-const TELEGRAM_CHAT_ID = -1003540960692;
-
-// ======================================
-// FUNÇÕES TELEGRAM
-// ======================================
-async function sendText(text) {
-  const r = await fetch(
-    `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text
-      })
-    }
-  );
-
-  console.log("sendMessage:", await r.text());
-}
-
-async function sendPhoto(username) {
-  const photoUrl =
-    `https://my-secondlife-agni.akamaized.net/users/${username}/sl_image.png`;
-
-  const r = await fetch(
-    `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendPhoto`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        photo: photoUrl
-      })
-    }
-  );
-
-  console.log("sendPhoto:", await r.text());
-}
-
-// ======================================
-// ENDPOINT DO SL
-// ======================================
+// ================= ENDPOINT SL =================
 app.post("/sl", async (req, res) => {
-  console.log("📥 SL:", req.body);
+  try {
+    const { event, username, photo, region, parcel } = req.body;
 
-  const { event, username, region, parcel } = req.body;
+    if (!event || !username || !photo) {
+      return res.status(400).send("Dados incompletos");
+    }
 
-  if (!event || !username) {
-    return res.json({ ok: false, error: "payload inválido" });
+    const caption =
+      `${event === "ENTROU" ? "🟢" : "🔴"} *${event}*\n` +
+      `👤 ${username}\n` +
+      `📍 Região: ${region}\n` +
+      `🏡 Parcel: ${parcel}`;
+
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        photo: photo,
+        caption: caption,
+        parse_mode: "Markdown"
+      })
+    });
+
+    console.log(`[${event}] ${username}`);
+    res.send("OK");
+
+  } catch (err) {
+    console.error("Erro Telegram:", err.message);
+    res.status(500).send("Erro");
   }
-
-  const text =
-    (event === "ENTROU" ? "🟢 ENTROU\n" : "🔴 SAIU\n") +
-    `👤 ${username}\n` +
-    `📍 Região: ${region}\n` +
-    `🏡 Parcel: ${parcel}`;
-
-  await sendText(text);
-  await sendPhoto(username);
-
-  res.json({ ok: true });
 });
 
-// ======================================
-// STATUS
-// ======================================
-app.get("/", (req, res) => {
-  res.send("Backend SL → Telegram ONLINE");
-});
-
-// ======================================
-// START
-// ======================================
+// ================= START =================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("🚀 Backend rodando");
+  console.log("🚀 SL → Telegram ativo");
 });
