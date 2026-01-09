@@ -18,7 +18,7 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
 }
 
 // ================= ANTI-SPAM =================
-const DEBOUNCE_TIME = 15000; // 15s
+const DEBOUNCE_TIME = 15000;
 const lastEvent = new Map();
 
 // ================= UTIL =================
@@ -36,11 +36,9 @@ function nowFormatted() {
 function isSpam(username, evt) {
   const key = `${username}:${evt}`;
   const now = Date.now();
-
   if (lastEvent.has(key) && now - lastEvent.get(key) < DEBOUNCE_TIME) {
     return true;
   }
-
   lastEvent.set(key, now);
   return false;
 }
@@ -50,7 +48,7 @@ app.post("/sl", async (req, res) => {
   try {
     console.log("📥 SL CHEGOU:", req.body);
 
-    // 👉 parcel vem DO LSL e NÃO é alterado
+    // 🔹 payload vindo do LSL
     const { event, username, region, parcel, slurl } = req.body;
 
     if (!event || !username || !region || !parcel) {
@@ -58,13 +56,11 @@ app.post("/sl", async (req, res) => {
     }
 
     if (isSpam(username, event)) {
-      console.log("⏸️ Evento ignorado (debounce)");
       return res.json({ ok: true, skipped: true });
     }
 
     const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
 
-    // ================= TELEGRAM =================
     const payload = {
       chat_id: chatId,
       text:
@@ -76,11 +72,7 @@ app.post("/sl", async (req, res) => {
       parse_mode: "Markdown",
       disable_web_page_preview: true,
       reply_markup: slurl
-        ? {
-            inline_keyboard: [
-              [{ text: "📍 Abrir no mapa", url: slurl }]
-            ]
-          }
+        ? { inline_keyboard: [[{ text: "📍 Abrir no mapa", url: slurl }]] }
         : undefined
     };
 
@@ -96,9 +88,7 @@ app.post("/sl", async (req, res) => {
     const tgJson = await tgRes.json();
     console.log("📨 TELEGRAM:", tgJson);
 
-    if (!tgJson.ok) {
-      return res.status(500).json(tgJson);
-    }
+    if (!tgJson.ok) return res.status(500).json(tgJson);
 
     res.json({ ok: true });
   } catch (err) {
@@ -109,5 +99,5 @@ app.post("/sl", async (req, res) => {
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — Telegram ONLINE (TEXTO / PARCEL REAL)");
+  console.log("✅ ILHA SALINAS — Telegram ONLINE");
 });
