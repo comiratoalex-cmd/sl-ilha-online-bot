@@ -1,20 +1,18 @@
 import express from "express";
 import fetch from "node-fetch";
+import sharp from "sharp";
+import FormData from "form-data";
 
 const app = express();
 app.use(express.json());
 
-// ==================================================
-// CONFIGURAÇÃO (VEM DO RAILWAY)
-// ==================================================
+// ================= CONFIG =================
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const TELEGRAM_CHAT_ID = -1003540960692;
 
-// ==================================================
-// FUNÇÃO TELEGRAM
-// ==================================================
-async function sendTelegramMessage(text) {
-  const response = await fetch(
+// ================= TEXTO =================
+async function sendText(text) {
+  const r = await fetch(
     `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
     {
       method: "POST",
@@ -25,43 +23,84 @@ async function sendTelegramMessage(text) {
       })
     }
   );
-
-  const data = await response.text();
-  console.log("Telegram:", data);
+  console.log("📤 sendMessage:", await r.text());
 }
 
-// ==================================================
-// ENDPOINT RECEBENDO DADOS DO SL
-// ==================================================
+// ================= AVATAR MINI =================
+async function generateMiniAvatar(username) {
+  const avatarUrl =
+    `https://my-secondlife-agni.akamaized.net/users/${username}/sl_image.png`;
+
+  const response = await fetch(avatarUrl);
+  const buffer = await response.arrayBuffer();
+
+  // Gera imagem pequena (96x96)
+  const mini = await sharp(Buffer.from(buffer))
+    .resize(96, 96, { fit: "cover" })
+    .png()
+    .toBuffer();
+
+  return mini;
+}
+
+// ================= FOTO (MINI) =================
+async function sendMiniPhoto(username, caption) {
+  const imageBuffer = await generateMiniAvatar(username);
+
+  const form = new FormData();
+  form.append("chat_id", TELEGRAM_CHAT_ID);
+  form.append("caption", caption);
+  form.append("photo", imageBuffer, "avatar.png");
+  form.append("parse_mode", "Markdown");
+
+  const r = await fetch(
+    `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendPhoto`,
+    {
+      method: "POST",
+      body: form
+    }
+  );
+
+  console.log("📸 sendPhoto (mini):", await r.text());
+}
+
+// ================= ENDPOINT SL =================
 app.post("/sl", async (req, res) => {
-  const { event, name, region, parcel } = req.body;
+  const {
+    sl_message,
+    event,
+    username,
+    region,
+    parcel
+  } = req.body;
 
-  console.log("Recebido do SL:", req.body);
+  try {
+    // EVENTO COM FOTO PEQUENA
+    if (event && username) {
+      const caption =
+        (event === "ENTROU" ? "🟢 *ENTROU*\n" : "🔴 *SAIU*\n") +
+        `👤 ${username}\n` +
+        `📍 Região: ${region}\n` +
+        `🏡 Parcel: ${parcel}`;
 
-  if (event && name) {
-    const message =
-      (event === "ENTROU" ? "🟢 ENTROU\n" : "🔴 SAIU\n") +
-      `👤 ${name}\n` +
-      `📍 Região: ${region}\n` +
-      `🏡 Parcel: ${parcel}`;
-
-    await sendTelegramMessage(message);
+      await sendMiniPhoto(username, caption);
+    }
+    // TEXTO NORMAL
+    else if (sl_message) {
+      await sendText(sl_message);
+    }
+  } catch (e) {
+    console.error("❌ ERRO:", e.message);
   }
 
   res.json({ ok: true });
 });
 
-// ==================================================
-// STATUS
-// ==================================================
+// ================= START =================
 app.get("/", (req, res) => {
-  res.send("Backend SL → Telegram ONLINE");
+  res.send("ILHA SALINAS backend ONLINE 🚀");
 });
 
-// ==================================================
-// START
-// ==================================================
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Backend rodando na porta ${PORT}`);
-});
+app.listen(process.env.PORT || 3000, () =>
+  console.log("🚀 Backend Railway ONLINE (avatar mini)")
+);
