@@ -38,7 +38,7 @@ function isSpam(username, event) {
   return false;
 }
 
-// ================= CARD IMAGE =================
+// ================= CARD (BANNER + TEXTO) =================
 async function generateCard({
   event,
   username,
@@ -48,55 +48,74 @@ async function generateCard({
   avatarUrl
 }) {
   const width = 720;
-  const height = 240;
+  const bannerHeight = 360;
+  const infoHeight = 200;
+  const height = bannerHeight + infoHeight;
 
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
-  // Fundo
-  ctx.fillStyle = "#0f1115";
-  ctx.fillRect(0, 0, width, height);
+  // ---------- BANNER ----------
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, 0, width, bannerHeight);
 
-  // Barra lateral
-  ctx.fillStyle = event === "ENTROU" ? "#2ecc71" : "#e74c3c";
-  ctx.fillRect(0, 0, 10, height);
-
-  // Status
-  ctx.beginPath();
-  ctx.arc(34, 34, 10, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Título
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 26px Sans-serif";
-  ctx.fillText(event, 54, 42);
-
-  // Avatar
   try {
     const avatar = await loadImage(avatarUrl);
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(80, 130, 44, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.drawImage(avatar, 36, 86, 88, 88);
-    ctx.restore();
+
+    const scale = Math.max(
+      width / avatar.width,
+      bannerHeight / avatar.height
+    );
+
+    const sw = avatar.width * scale;
+    const sh = avatar.height * scale;
+    const sx = (width - sw) / 2;
+    const sy = (bannerHeight - sh) / 2;
+
+    ctx.drawImage(avatar, sx, sy, sw, sh);
   } catch {
     console.warn("⚠️ Avatar não carregado");
   }
 
-  // Texto
+  // ---------- FUNDO INFO ----------
+  ctx.fillStyle = "#0f1115";
+  ctx.fillRect(0, bannerHeight, width, infoHeight);
+
+  let y = bannerHeight + 42;
+
+  // Status
+  ctx.fillStyle = event === "ENTROU" ? "#2ecc71" : "#e74c3c";
+  ctx.font = "bold 26px Sans-serif";
+  ctx.fillText(
+    `${event === "ENTROU" ? "🟢" : "🔴"} ${event}`,
+    24,
+    y
+  );
+
+  y += 40;
+
+  // Username
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 22px Sans-serif";
-  ctx.fillText(username, 150, 110);
+  ctx.font = "20px Sans-serif";
+  ctx.fillText(`👤 ${username}`, 24, y);
 
+  y += 32;
+
+  // Região
   ctx.fillStyle = "#cccccc";
-  ctx.font = "18px Sans-serif";
-  ctx.fillText(`📍 Região: ${region}`, 150, 145);
-  ctx.fillText(`🏡 Parcel: ${parcel}`, 150, 175);
+  ctx.fillText(`📍 Região: ${region}`, 24, y);
 
+  y += 28;
+
+  // Parcel
+  ctx.fillText(`🏡 Parcel: ${parcel}`, 24, y);
+
+  y += 28;
+
+  // Hora
   ctx.fillStyle = "#aaaaaa";
-  ctx.font = "16px Sans-serif";
-  ctx.fillText(`🕒 ${time}`, 150, 205);
+  ctx.font = "18px Sans-serif";
+  ctx.fillText(`🕒 ${time}`, 24, y);
 
   return canvas.toBuffer("image/png");
 }
@@ -111,4 +130,33 @@ app.post("/sl", async (req, res) => {
     }
 
     if (isSpam(username, event)) {
-      return res.json({ ok: true, skipped:
+      return res.json({ ok: true, skipped: "debounce" });
+    }
+
+    const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
+
+    const imageBuffer = await generateCard({
+      event,
+      username,
+      region,
+      parcel,
+      time: nowFormatted(),
+      avatarUrl: avatar
+    });
+
+    const form = new FormData();
+    form.append("chat_id", chatId);
+    form.append(
+      "photo",
+      new Blob([imageBuffer], { type: "image/png" }),
+      "evento.png"
+    );
+
+    if (slurl) {
+      form.append(
+        "reply_markup",
+        JSON.stringify({
+          inline_keyboard: [
+            [{ text: "📍 Abrir no mapa", url: slurl }]
+          ]
+        })
