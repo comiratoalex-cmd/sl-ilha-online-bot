@@ -2,166 +2,123 @@ import express from "express";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 // ================= CONFIG =================
 const TOKEN = process.env.TELEGRAM_TOKEN;
 const CHAT_ENTRADA = process.env.TELEGRAM_CHAT_ENTRADA;
 const CHAT_SAIDA = process.env.TELEGRAM_CHAT_SAIDA;
 
+console.log("BOOT");
+console.log("TOKEN OK?", !!TOKEN);
+console.log("CHAT_ENTRADA:", CHAT_ENTRADA);
+console.log("CHAT_SAIDA:", CHAT_SAIDA);
+
 if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
-  console.error("❌ Variáveis de ambiente ausentes");
+  console.error("❌ VARIÁVEIS DE AMBIENTE AUSENTES");
   process.exit(1);
 }
 
-// ================= ANTI-SPAM =================
-const DEBOUNCE_TIME = 15000;
-const lastEvent = new Map();
-
 // ================= UTIL =================
 function nowFormatted() {
-  return new Date().toLocaleString("pt-BR", {
-    timeZone: "Europe/Dublin",
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric"
-  });
+  return new Date().toISOString();
 }
 
-function isSpam(username, event) {
-  const key = `${username}:${event}`;
-  const now = Date.now();
-  if (lastEvent.has(key) && now - lastEvent.get(key) < DEBOUNCE_TIME) {
-    return true;
-  }
-  lastEvent.set(key, now);
-  return false;
-}
-
-// ================= CARD (BANNER + TEXTO) =================
-async function generateCard({ event, username, region, parcel, time, avatarUrl }) {
-  const width = 720;
-  const bannerHeight = 360;
-  const infoHeight = 200;
-  const height = bannerHeight + infoHeight;
-
-  const canvas = createCanvas(width, height);
+// ================= CARD (SIMPLES) =================
+async function generateCard(avatarUrl) {
+  const w = 600;
+  const h = 400;
+  const canvas = createCanvas(w, h);
   const ctx = canvas.getContext("2d");
 
-  // Banner
-  ctx.fillStyle = "#000000";
-  ctx.fillRect(0, 0, width, bannerHeight);
+  ctx.fillStyle = "#111";
+  ctx.fillRect(0, 0, w, h);
 
   try {
-    const avatar = await loadImage(avatarUrl);
-    const scale = Math.max(width / avatar.width, bannerHeight / avatar.height);
-    const sw = avatar.width * scale;
-    const sh = avatar.height * scale;
-    const sx = (width - sw) / 2;
-    const sy = (bannerHeight - sh) / 2;
-    ctx.drawImage(avatar, sx, sy, sw, sh);
-  } catch {
-    console.warn("⚠️ Avatar não carregado");
+    console.log("CARREGANDO AVATAR:", avatarUrl);
+    const img = await loadImage(avatarUrl);
+    ctx.drawImage(img, 0, 0, w, h);
+    console.log("AVATAR OK");
+  } catch (e) {
+    console.error("❌ ERRO AO CARREGAR AVATAR", e.message);
   }
 
-  // Fundo info
-  ctx.fillStyle = "#0f1115";
-  ctx.fillRect(0, bannerHeight, width, infoHeight);
-
-  let y = bannerHeight + 42;
-
-  // Status
-  ctx.fillStyle = event === "ENTROU" ? "#2ecc71" : "#e74c3c";
-  ctx.font = "bold 26px Sans-serif";
-  ctx.fillText(`${event === "ENTROU" ? "🟢" : "🔴"} ${event}`, 24, y);
-
-  y += 40;
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "20px Sans-serif";
-  ctx.fillText(`👤 ${username}`, 24, y);
-
-  y += 32;
-  ctx.fillStyle = "#cccccc";
-  ctx.fillText(`📍 Região: ${region}`, 24, y);
-
-  y += 28;
-  ctx.fillText(`🏡 Parcel: ${parcel}`, 24, y);
-
-  y += 28;
-  ctx.fillStyle = "#aaaaaa";
-  ctx.font = "18px Sans-serif";
-  ctx.fillText(`🕒 ${time}`, 24, y);
+  ctx.fillStyle = "#fff";
+  ctx.font = "20px sans-serif";
+  ctx.fillText("DEBUG IMAGE", 20, 30);
 
   return canvas.toBuffer("image/png");
 }
 
-// ================= ROUTE =================
+// ================= ROUTA PRINCIPAL =================
 app.post("/sl", async (req, res) => {
+  console.log("====================================");
+  console.log("🚀 POST /sl RECEBIDO");
+  console.log("BODY:", JSON.stringify(req.body, null, 2));
+
+  const { event, username, region, parcel, avatar, slurl } = req.body;
+
+  console.log("EVENT:", event);
+  console.log("USERNAME:", username);
+  console.log("REGION:", region);
+  console.log("PARCEL:", parcel);
+  console.log("AVATAR:", avatar);
+  console.log("SLURL:", slurl);
+
+  const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
+  console.log("CHAT ESCOLHIDO:", chatId);
+
+  // ================= TESTE 1 — TEXTO =================
   try {
-    console.log("REQ:", req.body);
+    console.log("📨 TESTE 1 — sendMessage");
+    const r1 = await fetch(
+      `https://api.telegram.org/bot${TOKEN}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: `DEBUG TEXTO OK\n${nowFormatted()}`
+        })
+      }
+    );
+    const j1 = await r1.json();
+    console.log("TELEGRAM sendMessage:", j1);
+  } catch (e) {
+    console.error("❌ ERRO sendMessage", e);
+  }
 
-    const { event, username, region, parcel, avatar, slurl } = req.body;
+  // ================= TESTE 2 — IMAGEM =================
+  try {
+    console.log("🖼️ TESTE 2 — gerar imagem");
+    const imgBuffer = await generateCard(avatar);
+    console.log("IMAGEM GERADA, BYTES:", imgBuffer.length);
 
-    if (!event || !username || !region || !parcel || !avatar) {
-      return res.status(400).json({ error: "Payload incompleto" });
-    }
+    const base64 = imgBuffer.toString("base64");
 
-    if (isSpam(username, event)) {
-      return res.json({ ok: true, skipped: "debounce" });
-    }
-
-    const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
-
-    const imageBuffer = await generateCard({
-      event,
-      username,
-      region,
-      parcel,
-      time: nowFormatted(),
-      avatarUrl: avatar
-    });
-
-    const base64Image = imageBuffer.toString("base64");
-
-    const tgRes = await fetch(
+    console.log("📨 TESTE 2 — sendPhoto");
+    const r2 = await fetch(
       `https://api.telegram.org/bot${TOKEN}/sendPhoto`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
-          photo: `data:image/png;base64,${base64Image}`,
-          caption:
-            `${event}\n` +
-            `👤 ${username}\n` +
-            `📍 ${region}\n` +
-            `🏡 ${parcel}\n` +
-            `🕒 ${nowFormatted()}`,
-          reply_markup: slurl
-            ? {
-                inline_keyboard: [
-                  [{ text: "📍 Abrir no mapa", url: slurl }]
-                ]
-              }
-            : undefined
+          photo: `data:image/png;base64,${base64}`,
+          caption: "DEBUG FOTO OK"
         })
       }
     );
-
-    const tgJson = await tgRes.json();
-    console.log("TELEGRAM:", tgJson);
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("❌ ERRO:", err);
-    res.status(500).json({ error: err.message });
+    const j2 = await r2.json();
+    console.log("TELEGRAM sendPhoto:", j2);
+  } catch (e) {
+    console.error("❌ ERRO sendPhoto", e);
   }
+
+  res.json({ ok: true, debug: true });
 });
 
 // ================= START =================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — Telegram ONLINE (BANNER MODE)");
+  console.log("✅ DEBUG SERVER ONLINE");
 });
