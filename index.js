@@ -14,14 +14,28 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
   process.exit(1);
 }
 
-// ================= STAFF =================
-const STAFF = [
-  "alexcominatto" // username do Telegram (sem @)
-];
+// ================= STAFF (GOOGLE SHEETS) =================
+let STAFF = [];
+
+const STAFF_URL =
+  "https://script.google.com/macros/s/AKfycbymRPp602CAxIkTKteILBrklhbPUxIl2Wjx0QwYOpoDj1uSI02Pm2agJ3CrEUdjd5Ts/exec";
+
+async function loadStaff() {
+  try {
+    const res = await fetch(STAFF_URL);
+    STAFF = await res.json();
+    console.log("👑 Staff carregado da planilha:", STAFF);
+  } catch (e) {
+    console.error("❌ Erro ao carregar staff da planilha", e);
+  }
+}
+
+// carrega ao iniciar + atualiza a cada 60s
+loadStaff();
+setInterval(loadStaff, 60000);
 
 function isStaffTelegram(msg) {
-  const user = msg.from.username || "";
-  return STAFF.includes(user);
+  return STAFF.includes(msg.from.id);
 }
 
 // ================= ANTI-SPAM =================
@@ -57,10 +71,11 @@ function isSpam(username, event) {
   return false;
 }
 
-// ================= SL → TELEGRAM =================
+// ================= SL → TELEGRAM (ENTRADA / SAÍDA) =================
 app.post("/sl", async (req, res) => {
   try {
     const { event, username, region, parcel, slurl } = req.body;
+
     if (!event || !username || !region || !parcel || !slurl) {
       return res.status(400).json({ error: "Payload incompleto" });
     }
@@ -137,7 +152,7 @@ app.post("/telegram", async (req, res) => {
     const message = text.replace(/^\/say(@\w+)?\s*/i, "");
     if (!message) return res.json({ ok: true });
 
-    const from = msg.from.username || msg.from.first_name || "Telegram";
+    const from = msg.from.first_name || "Telegram";
     lastMessageToSL = `📢 Telegram (${from}):\n${message}`;
 
     await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
@@ -150,60 +165,34 @@ app.post("/telegram", async (req, res) => {
     });
   }
 
-  // /ban
-  if (command === "/ban") {
+  // /ban e /unban (somente STAFF)
+  if (command === "/ban" || command === "/unban") {
     if (!isStaffTelegram(msg)) {
       await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
-          text: "⛔ Você não tem permissão."
+          text: "⛔ Você não tem permissão para usar este comando."
         })
       });
       return res.json({ ok: true });
     }
 
-    const target = text.replace(/^\/ban(@\w+)?\s*/i, "");
+    const target = text.replace(/^\/\w+(@\w+)?\s*/i, "");
     if (!target) return res.json({ ok: true });
 
-    lastMessageToSL = JSON.stringify({ action: "ban", target });
-
-    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: `🚫 Pedido de BAN enviado para: ${target}`
-      })
+    lastMessageToSL = JSON.stringify({
+      action: command === "/ban" ? "ban" : "unban",
+      target
     });
-  }
-
-  // /unban
-  if (command === "/unban") {
-    if (!isStaffTelegram(msg)) {
-      await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: "⛔ Você não tem permissão."
-        })
-      });
-      return res.json({ ok: true });
-    }
-
-    const target = text.replace(/^\/unban(@\w+)?\s*/i, "");
-    if (!target) return res.json({ ok: true });
-
-    lastMessageToSL = JSON.stringify({ action: "unban", target });
 
     await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId,
-        text: `♻️ Pedido de UNBAN enviado para: ${target}`
+        text: `✅ Comando ${command} enviado para ${target}`
       })
     });
   }
