@@ -13,7 +13,7 @@ const CHAT_SAIDA = process.env.TELEGRAM_CHAT_SAIDA;
 let STAFF = [];
 
 const STAFF_URL =
-  "COLE_AQUI_A_URL_DO_APPS_SCRIPT_QUE_FUNCIONOU";
+  "https://script.google.com/macros/s/AKfycbzwyzWzqxCRfhrrTksDJ9fD_CDtSH-TwWdIwsiGQDZCb2f_nuHKRcqN4P8hA6ULEFQM7A/exec";
 
 async function loadStaff() {
   try {
