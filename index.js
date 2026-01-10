@@ -66,7 +66,7 @@ const STAFF_URL =
 
 // ================= BANLIST (GOOGLE SHEETS) =================
 const BANLIST_URL =
-  "URL_DO_SEU_APPS_SCRIPT_DE_BANIDOS"; // <-- coloque aqui
+  "https://script.google.com/macros/s/AKfycbymRPp602CAxIkTKteILBrklhbPUxIl2Wjx0QwYOpoDj1uSI02Pm2agJ3CrEUdjd5Ts/exec"; // <-- coloque aqui
 
 async function loadStaff() {
   try {
