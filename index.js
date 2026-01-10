@@ -23,7 +23,7 @@ let lastOnlineUpdate = null;
 
 // ================= TELEGRAM → SL =================
 let lastMessageToSL = "";
-
+let lastMessageToSL = "";
 // ================= UTIL =================
 function nowFormatted() {
   return new Date().toLocaleString("pt-BR", {
@@ -138,6 +138,69 @@ app.post("/telegram", async (req, res) => {
 
   res.json({ ok: true });
 });
+  // /ban
+  if (command === "/ban") {
+    if (!isStaffTelegram(msg)) {
+      await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "⛔ Você não tem permissão para usar este comando."
+        })
+      });
+      return res.json({ ok: true });
+    }
+
+    const target = text.replace(/^\/ban(@\w+)?\s*/i, "");
+    if (!target) return res.json({ ok: true });
+
+    lastMessageToSL = JSON.stringify({
+      action: "ban",
+      target
+    });
+
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: `🚫 Pedido de BAN enviado para: ${target}`
+      })
+    });
+  }
+
+  // /unban
+  if (command === "/unban") {
+    if (!isStaffTelegram(msg)) {
+      await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "⛔ Você não tem permissão para usar este comando."
+        })
+      });
+      return res.json({ ok: true });
+    }
+
+    const target = text.replace(/^\/unban(@\w+)?\s*/i, "");
+    if (!target) return res.json({ ok: true });
+
+    lastMessageToSL = JSON.stringify({
+      action: "unban",
+      target
+    });
+
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: `♻️ Pedido de UNBAN enviado para: ${target}`
+      })
+    });
+  }
 
 // ================= SL POLLING =================
 app.get("/say", (req, res) => {
