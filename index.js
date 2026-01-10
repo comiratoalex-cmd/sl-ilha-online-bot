@@ -4,53 +4,84 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json({ limit: "2mb" }));
 
-// ================= CONFIG =================
+// =====================================================
+// CONFIGURAÇÃO (Railway ENV)
+// =====================================================
 const TOKEN = process.env.TELEGRAM_TOKEN;
 const CHAT_ENTRADA = process.env.TELEGRAM_CHAT_ENTRADA;
 const CHAT_SAIDA = process.env.TELEGRAM_CHAT_SAIDA;
+
+// URL BASE DO APPS SCRIPT (STAFF + BANIDOS)
+const SHEETS_BASE_URL =
+  "https://script.google.com/macros/s/AKfycbzwyzWzqxCRfhrrTksDJ9fD_CDtSH-TwWdIwsiGQDZCb2f_nuHKRcqN4P8hA6ULEFQM7A/exec";
 
 if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
   console.error("❌ Variáveis de ambiente ausentes");
   process.exit(1);
 }
 
-// ================= STAFF (GOOGLE SHEETS) =================
+// =====================================================
+// LISTAS (STAFF / BANIDOS)
+// =====================================================
 let STAFF = [];
+let BANIDOS = [];
 
-const STAFF_URL =
-  "https://script.google.com/macros/s/AKfycbymRPp602CAxIkTKteILBrklhbPUxIl2Wjx0QwYOpoDj1uSI02Pm2agJ3CrEUdjd5Ts/exec";
-
-// ================= BANLIST (GOOGLE SHEETS) =================
-const BANLIST_URL =
-  "https://script.google.com/macros/s/AKfycbymRPp602CAxIkTKteILBrklhbPUxIl2Wjx0QwYOpoDj1uSI02Pm2agJ3CrEUdjd5Ts/exec";
-
-// ================= LOAD STAFF =================
-async function loadStaff() {
+// =====================================================
+// CARREGAR LISTAS DA PLANILHA
+// =====================================================
+async function loadLists() {
   try {
-    const res = await fetch(STAFF_URL);
-    STAFF = await res.json();
-    console.log("👑 Staff carregado:", STAFF);
+    const staffRes = await fetch(`${SHEETS_BASE_URL}?tab=STAFF`);
+    STAFF = await staffRes.json();
+
+    const banRes = await fetch(`${SHEETS_BASE_URL}?tab=BANIDOS`);
+    BANIDOS = await banRes.json();
+
+    console.log("👑 STAFF:", STAFF.length);
+    console.log("🚫 BANIDOS:", BANIDOS.length);
   } catch (e) {
-    console.error("❌ Erro ao carregar staff", e);
+    console.error("❌ Erro ao carregar listas", e);
   }
 }
 
-loadStaff();
-setInterval(loadStaff, 60000);
+loadLists();
+setInterval(loadLists, 60000);
 
-function isStaffTelegram(msg) {
+function isStaff(msg) {
   const id = msg.from?.id || msg.sender_chat?.id;
   return STAFF.includes(id);
 }
 
-// ================= ONLINE =================
+// =====================================================
+// ANTI-SPAM
+// =====================================================
+const DEBOUNCE_TIME = 15000;
+const lastEvent = new Map();
+
+function isSpam(username, event) {
+  const key = `${username}:${event}`;
+  const now = Date.now();
+  if (lastEvent.has(key) && now - lastEvent.get(key) < DEBOUNCE_TIME) {
+    return true;
+  }
+  lastEvent.set(key, now);
+  return false;
+}
+
+// =====================================================
+// ONLINE
+// =====================================================
 let onlineUsers = [];
 let lastOnlineUpdate = null;
 
-// ================= TELEGRAM → SL =================
+// =====================================================
+// TELEGRAM → SL
+// =====================================================
 let lastMessageToSL = "";
 
-// ================= UTIL =================
+// =====================================================
+// UTIL
+// =====================================================
 function nowFormatted() {
   return new Date().toLocaleString("pt-BR", {
     timeZone: "Europe/Dublin",
@@ -62,47 +93,72 @@ function nowFormatted() {
   });
 }
 
-// ================= SL → TELEGRAM (ENTRADA / SAÍDA) =================
+function profileUrl(username) {
+  return "https://my.secondlife.com/" + username.replace(/\s+/g, ".");
+}
+
+// =====================================================
+// SL → TELEGRAM (ENTRADA / SAÍDA)
+// =====================================================
 app.post("/sl", async (req, res) => {
-  const { event, username, region, parcel, slurl } = req.body;
-  if (!event || !username || !region || !parcel || !slurl)
-    return res.status(400).json({ error: "Payload incompleto" });
+  try {
+    const { event, username, region, slurl } = req.body;
 
-  const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
+    if (!event || !username || !region || !slurl) {
+      return res.status(400).json({ error: "Payload incompleto" });
+    }
 
-  const text =
-    `${event === "ENTROU" ? "🟢 ENTRADA" : "🔴 SAÍDA"}\n\n` +
-    `👤 ${username}\n` +
-    `📍 Região: ${region}\n` +
-    `🏡 Parcel: ${parcel}\n` +
-    `🕒 ${nowFormatted()}`;
+    if (isSpam(username, event)) {
+      return res.json({ ok: true, skipped: true });
+    }
 
-  await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      reply_markup: {
-        inline_keyboard: [[{ text: "📍 Abrir no mapa", url: slurl }]]
-      }
-    })
-  });
+    const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
 
-  res.json({ ok: true });
+    const text =
+      `${event === "ENTROU" ? "🟢 ENTRADA" : "🔴 SAÍDA"}\n\n` +
+      `👤 ${username}\n` +
+      `📍 Região: ${region}\n` +
+      `🏖 Local: PRAIA SALINAS\n` +
+      `🕒 ${nowFormatted()}`;
+
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📍 Abrir no mapa", url: slurl }],
+            [{ text: "🖼 Ver foto do perfil", url: profileUrl(username) }]
+          ]
+        }
+      })
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ================= SL → ONLINE =================
+// =====================================================
+// SL → ONLINE
+// =====================================================
 app.post("/online", (req, res) => {
-  if (!Array.isArray(req.body.users))
+  if (!Array.isArray(req.body.users)) {
     return res.status(400).json({ error: "users inválido" });
+  }
 
   onlineUsers = req.body.users;
   lastOnlineUpdate = new Date();
   res.json({ ok: true });
 });
 
-// ================= TELEGRAM WEBHOOK =================
+// =====================================================
+// TELEGRAM WEBHOOK
+// =====================================================
 app.post("/telegram", async (req, res) => {
   const msg = req.body.message;
   if (!msg || !msg.text) return res.json({ ok: true });
@@ -126,9 +182,27 @@ app.post("/telegram", async (req, res) => {
     });
   }
 
-  // /banlist (VIA PLANILHA)
+  // /say
+  if (command === "/say") {
+    const message = text.replace(/^\/say(@\w+)?\s*/i, "");
+    if (!message) return res.json({ ok: true });
+
+    const from = msg.from.first_name || "Telegram";
+    lastMessageToSL = `📢 Telegram (${from}):\n${message}`;
+
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: "✅ Mensagem enviada ao grupo do SL"
+      })
+    });
+  }
+
+  // /banlist
   if (command === "/banlist") {
-    if (!isStaffTelegram(msg)) {
+    if (!isStaff(msg)) {
       await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -140,10 +214,7 @@ app.post("/telegram", async (req, res) => {
       return res.json({ ok: true });
     }
 
-    const r = await fetch(BANLIST_URL);
-    const list = await r.json();
-
-    if (!list.length) {
+    if (!BANIDOS.length) {
       await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -155,8 +226,8 @@ app.post("/telegram", async (req, res) => {
       return res.json({ ok: true });
     }
 
-    let out = "🚫 Banidos (planilha)\n\n";
-    list.forEach(u => (out += `⚪ ${u.name}\n`));
+    let out = "🚫 Banidos\n\n";
+    BANIDOS.forEach(u => (out += `⚪ ${u.name}\n`));
 
     await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
       method: "POST",
@@ -168,7 +239,9 @@ app.post("/telegram", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ================= SL POLLING =================
+// =====================================================
+// SL POLLING
+// =====================================================
 app.get("/say", (req, res) => {
   if (!lastMessageToSL) return res.send("");
   const msg = lastMessageToSL;
@@ -176,7 +249,9 @@ app.get("/say", (req, res) => {
   res.send(msg);
 });
 
-// ================= START =================
+// =====================================================
+// START
+// =====================================================
 app.listen(process.env.PORT || 3000, () => {
   console.log("✅ ILHA SALINAS — TELEGRAM + SL ATIVO");
 });
