@@ -30,12 +30,12 @@ async function loadStaff() {
   }
 }
 
-// carrega ao iniciar + atualiza a cada 60s
 loadStaff();
 setInterval(loadStaff, 60000);
 
 function isStaffTelegram(msg) {
-  return STAFF.includes(msg.from.id);
+  const id = msg.from?.id || msg.sender_chat?.id;
+  return STAFF.includes(id);
 }
 
 // ================= ANTI-SPAM =================
@@ -48,6 +48,10 @@ let lastOnlineUpdate = null;
 
 // ================= TELEGRAM → SL =================
 let lastMessageToSL = "";
+
+// ================= BANLIST =================
+let BANLIST_BUFFER = [];
+let BANLIST_WAITING_CHAT = null;
 
 // ================= UTIL =================
 function nowFormatted() {
@@ -123,6 +127,41 @@ app.post("/online", (req, res) => {
   res.json({ ok: true });
 });
 
+// ================= SL → BANLIST =================
+app.post("/banlist", async (req, res) => {
+  const data = req.body;
+
+  if (data.done) {
+    if (!BANLIST_WAITING_CHAT) return res.json({ ok: true });
+
+    let text = "🚫 Banidos do parcel\n\n";
+
+    if (!BANLIST_BUFFER.length) {
+      text += "Nenhum banido.";
+    } else {
+      BANLIST_BUFFER.forEach(u => {
+        text += `${u.online ? "🟢" : "⚪"} ${u.name}\n`;
+      });
+    }
+
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: BANLIST_WAITING_CHAT,
+        text
+      })
+    });
+
+    BANLIST_BUFFER = [];
+    BANLIST_WAITING_CHAT = null;
+    return res.json({ ok: true });
+  }
+
+  BANLIST_BUFFER.push(data);
+  res.json({ ok: true });
+});
+
 // ================= TELEGRAM WEBHOOK =================
 app.post("/telegram", async (req, res) => {
   const msg = req.body.message;
@@ -165,7 +204,35 @@ app.post("/telegram", async (req, res) => {
     });
   }
 
-  // /ban e /unban (somente STAFF)
+  // /banlist (STAFF)
+  if (command === "/banlist") {
+    if (!isStaffTelegram(msg)) {
+      await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "⛔ Você não tem permissão para usar este comando."
+        })
+      });
+      return res.json({ ok: true });
+    }
+
+    BANLIST_BUFFER = [];
+    BANLIST_WAITING_CHAT = chatId;
+    lastMessageToSL = "GET_BANLIST";
+
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: "📋 Buscando lista de banidos..."
+      })
+    });
+  }
+
+  // /ban e /unban
   if (command === "/ban" || command === "/unban") {
     if (!isStaffTelegram(msg)) {
       await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
