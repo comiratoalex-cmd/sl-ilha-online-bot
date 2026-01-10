@@ -48,10 +48,10 @@ loadLists();
 setInterval(loadLists, 60000);
 
 function isStaff(msg) {
+  if (!Array.isArray(STAFF)) return false;
   const id = msg.from?.id || msg.sender_chat?.id;
   return STAFF.includes(id);
 }
-
 // =====================================================
 // ANTI-SPAM
 // =====================================================
