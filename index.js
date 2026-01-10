@@ -18,19 +18,24 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
 let STAFF = [];
 
 const STAFF_URL =
-  "https://script.google.com/macros/s/AKfycbymRPp602CAxIkTKteILBrklhbPUxIl2Wjx0QwYOpoDj1uSI02Pm2agJ3CrEUdjd5Ts/exec";
+  "https://script.google.com/macros/s/AKfycbzwyzWzqxCRfhrrTksDJ9fD_CDtSH-TwWdIwsiGQDZCb2f_nuHKRcqN4P8hA6ULEFQM7A/exec";
 
 async function loadStaff() {
   try {
     const res = await fetch(STAFF_URL);
-    STAFF = await res.json();
-    console.log("👑 Staff carregado da planilha:", STAFF);
+    const text = await res.text();
+
+    if (!text.trim().startsWith("[")) {
+      throw new Error("Resposta não é JSON");
+    }
+
+    STAFF = JSON.parse(text);
+    console.log("👑 Staff carregado:", STAFF);
   } catch (e) {
-    console.error("❌ Erro ao carregar staff da planilha", e);
+    console.error("❌ Erro ao carregar staff:", e.message);
   }
 }
 
-// carrega ao iniciar + atualiza a cada 60s
 loadStaff();
 setInterval(loadStaff, 60000);
 
@@ -48,6 +53,10 @@ let lastOnlineUpdate = null;
 
 // ================= TELEGRAM → SL =================
 let lastMessageToSL = "";
+
+// ================= BANLIST (NOVO) =================
+let BANLIST_BUFFER = [];
+let BANLIST_WAITING_CHAT = null;
 
 // ================= UTIL =================
 function nowFormatted() {
@@ -75,7 +84,6 @@ function isSpam(username, event) {
 app.post("/sl", async (req, res) => {
   try {
     const { event, username, region, parcel, slurl } = req.body;
-
     if (!event || !username || !region || !parcel || !slurl) {
       return res.status(400).json({ error: "Payload incompleto" });
     }
@@ -123,6 +131,41 @@ app.post("/online", (req, res) => {
   res.json({ ok: true });
 });
 
+// ================= RECEBER BANLIST DO LSL =================
+app.post("/banlist", async (req, res) => {
+  const data = req.body;
+
+  if (data.done) {
+    if (!BANLIST_WAITING_CHAT) return res.json({ ok: true });
+
+    let text = "🚫 Banidos do parcel\n\n";
+
+    if (BANLIST_BUFFER.length === 0) {
+      text += "Nenhum banido.";
+    } else {
+      BANLIST_BUFFER.forEach(u => {
+        text += `${u.online ? "🟢" : "⚪"} ${u.name}\n`;
+      });
+    }
+
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: BANLIST_WAITING_CHAT,
+        text
+      })
+    });
+
+    BANLIST_BUFFER = [];
+    BANLIST_WAITING_CHAT = null;
+    return res.json({ ok: true });
+  }
+
+  BANLIST_BUFFER.push(data);
+  res.json({ ok: true });
+});
+
 // ================= TELEGRAM WEBHOOK =================
 app.post("/telegram", async (req, res) => {
   const msg = req.body.message;
@@ -165,7 +208,35 @@ app.post("/telegram", async (req, res) => {
     });
   }
 
-  // /ban e /unban (somente STAFF)
+  // /banlist (NOVO)
+  if (command === "/banlist") {
+    if (!isStaffTelegram(msg)) {
+      await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "⛔ Você não tem permissão."
+        })
+      });
+      return res.json({ ok: true });
+    }
+
+    BANLIST_BUFFER = [];
+    BANLIST_WAITING_CHAT = chatId;
+    lastMessageToSL = "GET_BANLIST";
+
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: "📋 Buscando lista de banidos..."
+      })
+    });
+  }
+
+  // /ban e /unban
   if (command === "/ban" || command === "/unban") {
     if (!isStaffTelegram(msg)) {
       await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
@@ -173,7 +244,7 @@ app.post("/telegram", async (req, res) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
-          text: "⛔ Você não tem permissão para usar este comando."
+          text: "⛔ Você não tem permissão."
         })
       });
       return res.json({ ok: true });
