@@ -11,7 +11,7 @@ const TOKEN = process.env.TELEGRAM_TOKEN;
 const CHAT_ENTRADA = process.env.TELEGRAM_CHAT_ENTRADA;
 const CHAT_SAIDA = process.env.TELEGRAM_CHAT_SAIDA;
 
-// APPS SCRIPT (STAFF + BANIDOS)
+// APPS SCRIPT (BANIDOS)
 const SHEETS_BASE_URL =
   "https://script.google.com/macros/s/AKfycbzwyzWzqxCRfhrrTksDJ9fD_CDtSH-TwWdIwsiGQDZCb2f_nuHKRcqN4P8hA6ULEFQM7A/exec";
 
@@ -21,50 +21,28 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
 }
 
 // =====================================================
-// LISTAS
+// LISTA DE BANIDOS (SEM AUTENTICAÇÃO)
 // =====================================================
-let STAFF = [];
 let BANIDOS = [];
 
 // =====================================================
-// CARREGAR LISTAS DA PLANILHA
+// CARREGAR BANIDOS DA PLANILHA
 // =====================================================
-async function loadLists() {
+async function loadBanidos() {
   try {
-    const staffRes = await fetch(`${SHEETS_BASE_URL}?tab=STAFF`);
-    STAFF = await staffRes.json();
-
-    const banRes = await fetch(`${SHEETS_BASE_URL}?tab=BANIDOS`);
-    BANIDOS = await banRes.json();
-
-    console.log("👑 STAFF recebido:", STAFF);
-    console.log("🚫 BANIDOS recebidos:", BANIDOS.length);
+    const res = await fetch(`${SHEETS_BASE_URL}?tab=BANIDOS`);
+    BANIDOS = await res.json();
+    console.log("🚫 BANIDOS carregados:", BANIDOS.length);
   } catch (e) {
-    console.error("❌ Erro ao carregar listas:", e);
+    console.error("❌ Erro ao carregar banidos:", e);
   }
 }
 
-loadLists();
-setInterval(loadLists, 60000);
+loadBanidos();
+setInterval(loadBanidos, 60000);
 
 // =====================================================
-// PERMISSÃO (BLINDADA)
-// =====================================================
-function isStaff(msg) {
-  const userId =
-    msg.from?.id ||
-    msg.sender_chat?.id ||
-    msg.chat?.id;
-
-  console.log("🔍 Checando permissão para ID:", userId);
-  console.log("👑 STAFF atual:", STAFF);
-
-  if (!Array.isArray(STAFF)) return false;
-  return STAFF.includes(Number(userId));
-}
-
-// =====================================================
-// ANTI-SPAM
+// ANTI-SPAM (ENTRADA / SAÍDA)
 // =====================================================
 const DEBOUNCE_TIME = 15000;
 const lastEvent = new Map();
@@ -168,7 +146,7 @@ app.post("/online", (req, res) => {
 });
 
 // =====================================================
-// TELEGRAM WEBHOOK
+// TELEGRAM WEBHOOK (SEM AUTENTICAÇÃO)
 // =====================================================
 app.post("/telegram", async (req, res) => {
   const msg = req.body.message;
@@ -198,7 +176,7 @@ app.post("/telegram", async (req, res) => {
     const message = text.replace(/^\/say(@\w+)?\s*/i, "");
     if (!message) return res.json({ ok: true });
 
-    const from = msg.from.first_name || "Telegram";
+    const from = msg.from?.first_name || "Telegram";
     lastMessageToSL = `📢 Telegram (${from}):\n${message}`;
 
     await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
@@ -211,20 +189,8 @@ app.post("/telegram", async (req, res) => {
     });
   }
 
-  // /banlist
+  // /banlist (SEM AUTENTICAÇÃO)
   if (command === "/banlist") {
-    if (!isStaff(msg)) {
-      await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: "⛔ Você não tem permissão."
-        })
-      });
-      return res.json({ ok: true });
-    }
-
     if (!Array.isArray(BANIDOS) || !BANIDOS.length) {
       await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
         method: "POST",
@@ -245,7 +211,10 @@ app.post("/telegram", async (req, res) => {
     await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text: out })
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: out
+      })
     });
   }
 
@@ -253,7 +222,7 @@ app.post("/telegram", async (req, res) => {
 });
 
 // =====================================================
-// SL POLLING
+// SL POLLING (Telegram → SL)
 // =====================================================
 app.get("/say", (req, res) => {
   if (!lastMessageToSL) return res.send("");
@@ -266,5 +235,5 @@ app.get("/say", (req, res) => {
 // START
 // =====================================================
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ ILHA SALINAS — TELEGRAM + SL ATIVO");
+  console.log("✅ ILHA SALINAS — TELEGRAM + SL ATIVO (SEM AUTENTICAÇÃO)");
 });
