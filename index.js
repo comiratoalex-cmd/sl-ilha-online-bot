@@ -18,7 +18,7 @@ if (!TOKEN || !CHAT_ENTRADA || !CHAT_SAIDA) {
 let STAFF = [];
 
 const STAFF_URL =
-  "https://script.google.com/macros/s/AKfycbzwyzWzqxCRfhrrTksDJ9fD_CDtSH-TwWdIwsiGQDZCb2f_nuHKRcqN4P8hA6ULEFQM7A/exec";
+ "https://script.google.com/macros/s/AKfycbzwyzWzqxCRfhrrTksDJ9fD_CDtSH-TwWdIwsiGQDZCb2f_nuHKRcqN4P8hA6ULEFQM7A/exec";
 
 async function loadStaff() {
   try {
@@ -26,7 +26,7 @@ async function loadStaff() {
     const text = await res.text();
 
     if (!text.trim().startsWith("[")) {
-      throw new Error("Resposta não é JSON");
+      throw new Error("Resposta não é JSON: " + text.slice(0, 50));
     }
 
     STAFF = JSON.parse(text);
@@ -54,7 +54,7 @@ let lastOnlineUpdate = null;
 // ================= TELEGRAM → SL =================
 let lastMessageToSL = "";
 
-// ================= BANLIST (NOVO) =================
+// ================= BANLIST =================
 let BANLIST_BUFFER = [];
 let BANLIST_WAITING_CHAT = null;
 
@@ -84,54 +84,41 @@ function isSpam(username, event) {
 app.post("/sl", async (req, res) => {
   try {
     const { event, username, region, parcel, slurl } = req.body;
-    if (!event || !username || !region || !parcel || !slurl) {
+    if (!event || !username || !region || !parcel || !slurl)
       return res.status(400).json({ error: "Payload incompleto" });
-    }
 
-    if (isSpam(username, event)) {
+    if (isSpam(username, event))
       return res.json({ ok: true, skipped: true });
-    }
 
     const chatId = event === "ENTROU" ? CHAT_ENTRADA : CHAT_SAIDA;
 
     const text =
       `${event === "ENTROU" ? "🟢 ENTRADA" : "🔴 SAÍDA"}\n\n` +
-      `👤 ${username}\n` +
-      `📍 Região: ${region}\n` +
-      `🏡 Parcel: ${parcel}\n` +
-      `🕒 ${nowFormatted()}`;
+      `👤 ${username}\n📍 ${region}\n🏡 ${parcel}\n🕒 ${nowFormatted()}`;
 
     await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        reply_markup: {
-          inline_keyboard: [[{ text: "📍 Abrir no mapa", url: slurl }]]
-        }
-      })
+      body: JSON.stringify({ chat_id: chatId, text })
     });
 
     res.json({ ok: true });
   } catch (e) {
-    console.error(e);
     res.status(500).json({ error: e.message });
   }
 });
 
 // ================= SL → ONLINE =================
 app.post("/online", (req, res) => {
-  if (!Array.isArray(req.body.users)) {
+  if (!Array.isArray(req.body.users))
     return res.status(400).json({ error: "users inválido" });
-  }
 
   onlineUsers = req.body.users;
   lastOnlineUpdate = new Date();
   res.json({ ok: true });
 });
 
-// ================= RECEBER BANLIST DO LSL =================
+// ================= BANLIST (LSL → BACKEND) =================
 app.post("/banlist", async (req, res) => {
   const data = req.body;
 
@@ -140,7 +127,7 @@ app.post("/banlist", async (req, res) => {
 
     let text = "🚫 Banidos do parcel\n\n";
 
-    if (BANLIST_BUFFER.length === 0) {
+    if (!BANLIST_BUFFER.length) {
       text += "Nenhum banido.";
     } else {
       BANLIST_BUFFER.forEach(u => {
@@ -166,7 +153,7 @@ app.post("/banlist", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ================= TELEGRAM WEBHOOK =================
+// ================= TELEGRAM =================
 app.post("/telegram", async (req, res) => {
   const msg = req.body.message;
   if (!msg || !msg.text) return res.json({ ok: true });
@@ -175,40 +162,6 @@ app.post("/telegram", async (req, res) => {
   const text = msg.text.trim();
   const command = text.split(" ")[0].split("@")[0];
 
-  // /online
-  if (command === "/online") {
-    const response = onlineUsers.length
-      ? `🟢 Usuários online (${onlineUsers.length})\n\n` +
-        onlineUsers.map(u => `👤 ${u}`).join("\n") +
-        `\n\n🕒 ${lastOnlineUpdate.toLocaleTimeString("pt-BR")}`
-      : "🔴 Ninguém online no momento.";
-
-    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text: response })
-    });
-  }
-
-  // /say
-  if (command === "/say") {
-    const message = text.replace(/^\/say(@\w+)?\s*/i, "");
-    if (!message) return res.json({ ok: true });
-
-    const from = msg.from.first_name || "Telegram";
-    lastMessageToSL = `📢 Telegram (${from}):\n${message}`;
-
-    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: "✅ Mensagem enviada ao grupo do SL"
-      })
-    });
-  }
-
-  // /banlist (NOVO)
   if (command === "/banlist") {
     if (!isStaffTelegram(msg)) {
       await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
@@ -232,38 +185,6 @@ app.post("/telegram", async (req, res) => {
       body: JSON.stringify({
         chat_id: chatId,
         text: "📋 Buscando lista de banidos..."
-      })
-    });
-  }
-
-  // /ban e /unban
-  if (command === "/ban" || command === "/unban") {
-    if (!isStaffTelegram(msg)) {
-      await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: "⛔ Você não tem permissão."
-        })
-      });
-      return res.json({ ok: true });
-    }
-
-    const target = text.replace(/^\/\w+(@\w+)?\s*/i, "");
-    if (!target) return res.json({ ok: true });
-
-    lastMessageToSL = JSON.stringify({
-      action: command === "/ban" ? "ban" : "unban",
-      target
-    });
-
-    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: `✅ Comando ${command} enviado para ${target}`
       })
     });
   }
